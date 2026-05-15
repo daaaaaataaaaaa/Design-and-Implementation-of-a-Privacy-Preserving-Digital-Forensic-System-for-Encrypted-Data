@@ -1,0 +1,9 @@
+frontend/node_modules/
+frontend/dist/
+backend/ml-service/.venv/
+backend/ml-service/__pycache__/
+backend/ml-service/app/__pycache__/
+backend/searchable-encryption-api/target/
+.env
+*.log
+

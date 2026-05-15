@@ -1,0 +1,23 @@
+# Runtime and dependency output
+node_modules/
+dist/
+target/
+.venv/
+__pycache__/
+*.py[cod]
+
+# Local logs and temp files
+*.log
+*.tmp
+*.bak
+
+# IDE and OS metadata
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Local environment files
+.env
+.env.local
+

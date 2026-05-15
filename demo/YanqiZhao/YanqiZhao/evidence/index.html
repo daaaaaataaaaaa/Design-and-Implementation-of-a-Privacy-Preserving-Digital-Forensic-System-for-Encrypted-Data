@@ -1,0 +1,790 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Blockchain Evidence Depository (Hash-based)</title>
+    <style>
+        body { font-family: 'Segoe UI', Arial, sans-serif; max-width: 1200px; margin: 0 auto; padding: 20px; background: #f0f2f5; }
+        h1 { color: #1a1a2e; }
+        .subtitle { color: #666; margin-bottom: 20px; border-left: 4px solid #4CAF50; padding-left: 15px; }
+        .section { background: white; margin: 20px 0; padding: 20px; border-radius: 12px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        .section h2 { margin-top: 0; color: #1a1a2e; border-bottom: 2px solid #4CAF50; padding-bottom: 10px; }
+        button { background: #4CAF50; color: white; padding: 10px 20px; border: none; border-radius: 6px; cursor: pointer; margin: 5px; font-size: 14px; transition: all 0.3s; }
+        button:hover { background: #45a049; transform: translateY(-1px); }
+        button:disabled { background: #ccc; cursor: not-allowed; transform: none; }
+        button.danger { background: #f44336; }
+        button.danger:hover { background: #d32f2f; }
+        button.warning { background: #ff9800; }
+        button.warning:hover { background: #fb8c00; }
+        button.info { background: #2196F3; }
+        button.info:hover { background: #1976D2; }
+        input, textarea { width: 100%; padding: 10px; margin: 8px 0; border: 1px solid #ddd; border-radius: 6px; box-sizing: border-box; font-size: 14px; }
+        .row { display: flex; gap: 15px; flex-wrap: wrap; }
+        .col { flex: 1; min-width: 300px; }
+        .result { background: #f8f9fa; padding: 15px; border-radius: 8px; margin-top: 15px; font-size: 13px; border-left: 4px solid #4CAF50; }
+        .error { border-left-color: #f44336; background: #ffebee; }
+        .warning { border-left-color: #ff9800; background: #fff3e0; }
+        .hash { font-family: monospace; word-break: break-all; background: #e9ecef; padding: 8px; border-radius: 4px; font-size: 12px; }
+        .status { padding: 5px 10px; border-radius: 20px; display: inline-block; font-size: 12px; }
+        .status.success { background: #d4edda; color: #155724; }
+        .status.error { background: #f8d7da; color: #721c24; }
+        .status.warning { background: #fff3cd; color: #856404; }
+        .tamper-badge { background: #ff9800; color: white; padding: 2px 8px; border-radius: 12px; font-size: 11px; margin-left: 10px; }
+        hr { margin: 15px 0; }
+        .file-info-bar { background: #e3f2fd; padding: 10px; border-radius: 6px; margin: 10px 0; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 13px; }
+        th, td { border: 1px solid #ddd; padding: 10px; text-align: left; }
+        th { background: #4CAF50; color: white; }
+        tr:hover { background: #f5f5f5; }
+        .records-container { max-height: 400px; overflow-y: auto; }
+        .loading { text-align: center; padding: 20px; color: #666; }
+    </style>
+</head>
+<body>
+    <h1>🔐 Blockchain Attack Evidence Depository</h1>
+    <div class="subtitle">📌 Hash-based Notarization</div>
+    
+    <!-- Connection Status -->
+    <div class="section">
+        <h2> 1. Connect to Ganache Local Chain</h2>
+        <button id="connectBtn">Connect to Local Chain</button>
+        <button id="refreshBalanceBtn" class="info" disabled>Refresh Balance</button>
+        <div id="status"></div>
+    </div>
+    
+    <div class="row">
+        <!-- Left: Evidence Submission -->
+        <div class="col">
+            <div class="section">
+                <h2>2. Upload JSON File for Notarization</h2>
+                <p style="color: #666; font-size: 13px;">Only file hash is stored on-chain; original file remains locally as backup</p>
+                <input type="file" id="jsonFile" accept=".json">
+                <div id="fileInfo" style="margin-top: 10px;"></div>
+                
+                <div class="row">
+                    <div class="col">
+                        <input type="text" id="caseId" placeholder="Case ID" value="CASE-001">
+                    </div>
+                    <div class="col">
+                        <input type="text" id="evidenceName" placeholder="Evidence Name" value="Attack Evidence">
+                    </div>
+                </div>
+                
+                <div class="row">
+                    <div class="col">
+                        <input type="text" id="attackType" placeholder="Attack Type" value="sql_injection">
+                    </div>
+                    <div class="col">
+                        <input type="text" id="sourceIp" placeholder="Source IP" value="192.168.1.100">
+                    </div>
+                </div>
+                
+                <div class="row">
+                    <div class="col">
+                        <input type="text" id="targetUrl" placeholder="Target URL" value="/api/login">
+                    </div>
+                </div>
+                
+                <textarea id="description" rows="2" placeholder="Description">Forensic evidence report</textarea>
+                
+                <button id="storeBtn" disabled>📝 Submit Hash to Chain</button>
+                <div id="storeResult"></div>
+            </div>
+        </div>
+        
+        <!-- Right: Verification & Tampering Demo -->
+        <div class="col">
+            <div class="section">
+                <h2>3. Verification & Tampering Demo</h2>
+                <p style="color: #666; font-size: 13px;">Select a file to verify integrity, or simulate file tampering</p>
+                <input type="file" id="verifyFile" accept=".json">
+                <input type="text" id="verifyHashInput" placeholder="Or enter evidence hash (64 chars)">
+                
+                <div class="row">
+                    <div class="col">
+                        <button id="verifyBtn" disabled>Verify Integrity</button>
+                    </div>
+                    <div class="col">
+                        <button id="tamperBtn" class="warning" disabled>Simulate Tampering</button>
+                    </div>
+                    <div class="col">
+                        <button id="resetFileBtn" class="info" disabled>Restore Original</button>
+                    </div>
+                </div>
+                
+                <div id="verifyResult"></div>
+                
+                <!-- Current file status display -->
+                <div id="fileStatus" style="margin-top: 10px; font-size: 12px;"></div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="row">
+        <!-- Duplicate detection -->
+        <div class="col">
+            <div class="section">
+                <h2>4. Duplicate Detection</h2>
+                <p style="color: #666; font-size: 13px;">Check if a hash has already been notarized</p>
+                <input type="text" id="duplicateHash" placeholder="Enter evidence hash to check">
+                <button id="checkDuplicateBtn" class="info" disabled>Check Duplicate</button>
+                <div id="duplicateResult"></div>
+            </div>
+        </div>
+        
+        <!-- Statistics -->
+        <div class="col">
+            <div class="section">
+                <h2>5. Statistics</h2>
+                <button id="queryTotalBtn" class="info" disabled>Query Total Records</button>
+                <div id="queryResult"></div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Recent Notarization Records -->
+    <div class="section">
+        <h2>6. Recent Notarization Records</h2>
+        <button id="refreshRecordsBtn" class="info" disabled>Refresh Records</button>
+        <div id="recordsList" class="records-container">
+            <div class="loading">Please connect to Ganache first...</div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/web3@1.10.0/dist/web3.min.js"></script>
+    <script>
+        // ============ Configuration ============
+        // CONTRACT ADDRESS GOES HERE!!!!要换合约地址！！！
+        const CONTRACT_ADDRESS = "0x9fe595F619188443CEA315d6b7BAfB522d68F500";
+        
+        // Contract ABI
+        const CONTRACT_ABI = [
+            {
+                "inputs": [{"internalType": "uint256", "name": "_recordId", "type": "uint256"}],
+                "name": "getRecord",
+                "outputs": [
+                    {"internalType": "string", "name": "caseId", "type": "string"},
+                    {"internalType": "string", "name": "evidenceHash", "type": "string"},
+                    {"internalType": "string", "name": "evidenceName", "type": "string"},
+                    {"internalType": "address", "name": "submitter", "type": "address"},
+                    {"internalType": "uint256", "name": "timestamp", "type": "uint256"},
+                    {"internalType": "string", "name": "description", "type": "string"},
+                    {"internalType": "bool", "name": "isActive", "type": "bool"},
+                    {"internalType": "string", "name": "fileName", "type": "string"},
+                    {"internalType": "string", "name": "attackType", "type": "string"},
+                    {"internalType": "string", "name": "sourceIp", "type": "string"},
+                    {"internalType": "string", "name": "targetUrl", "type": "string"}
+                ],
+                "stateMutability": "view",
+                "type": "function"
+            },
+            {
+                "inputs": [],
+                "name": "getTotalRecords",
+                "outputs": [{"internalType": "uint256", "name": "", "type": "uint256"}],
+                "stateMutability": "view",
+                "type": "function"
+            },
+            {
+                "inputs": [{"internalType": "string", "name": "_evidenceHash", "type": "string"}],
+                "name": "verifyEvidence",
+                "outputs": [{"internalType": "bool", "name": "", "type": "bool"}],
+                "stateMutability": "view",
+                "type": "function"
+            },
+            {
+                "inputs": [
+                    {"internalType": "string", "name": "_caseId", "type": "string"},
+                    {"internalType": "string", "name": "_fileHash", "type": "string"},
+                    {"internalType": "string", "name": "_evidenceName", "type": "string"},
+                    {"internalType": "string", "name": "_description", "type": "string"},
+                    {"internalType": "string", "name": "_fileName", "type": "string"},
+                    {"internalType": "string", "name": "_attackType", "type": "string"},
+                    {"internalType": "string", "name": "_sourceIp", "type": "string"},
+                    {"internalType": "string", "name": "_targetUrl", "type": "string"}
+                ],
+                "name": "storeJSONEvidence",
+                "outputs": [{"internalType": "uint256", "name": "", "type": "uint256"}],
+                "stateMutability": "nonpayable",
+                "type": "function"
+            }
+        ];
+        
+        let web3;
+        let contract;
+        let currentAccount;
+        
+        // Current selected file info
+        let currentFile = null;
+        let currentFileContent = null;
+        let currentFileHash = null;
+        let currentFileName = null;
+        let originalFileContent = null;
+        let isTampered = false;
+        
+        // Local cache
+        let storedHashes = new Set();
+        let totalRecords = 0;
+        
+        // ============ SHA256 Calculation ============
+        async function calculateSHA256(content) {
+            const encoder = new TextEncoder();
+            const data = encoder.encode(content);
+            const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+            const hashArray = Array.from(new Uint8Array(hashBuffer));
+            const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+            return hashHex;
+        }
+        
+        // ============ Format Timestamp ============
+        function formatTimestamp(timestamp) {
+            if (!timestamp || timestamp == 0) return 'Unknown';
+            return new Date(timestamp * 1000).toLocaleString();
+        }
+        
+        // ============ Format Address ============
+        function formatAddress(address) {
+            if (!address) return 'Unknown';
+            return address.substring(0, 6) + '...' + address.substring(address.length - 4);
+        }
+        
+        // ============ Load All Records from Blockchain ============
+        async function loadAllRecordsFromBlockchain() {
+            if (!contract) {
+                console.log('Contract not initialized');
+                return [];
+            }
+            
+            try {
+                const total = await contract.methods.getTotalRecords().call();
+                totalRecords = parseInt(total);
+                console.log(`Loading from blockchain: total records = ${totalRecords}`);
+                
+                if (totalRecords == 0) {
+                    return [];
+                }
+                
+                let allRecords = [];
+                for (let i = 0; i < totalRecords; i++) {
+                    try {
+                        const record = await contract.methods.getRecord(i).call();
+                        allRecords.push({ 
+                            id: i, 
+                            caseId: record.caseId,
+                            evidenceHash: record.evidenceHash,
+                            evidenceName: record.evidenceName,
+                            fileName: record.fileName || 'Unknown',
+                            attackType: record.attackType || 'Unknown',
+                            sourceIp: record.sourceIp || 'Unknown',
+                            targetUrl: record.targetUrl || 'Unknown',
+                            timestamp: record.timestamp,
+                            isActive: record.isActive,
+                            submitter: record.submitter
+                        });
+                        if (record.evidenceHash) {
+                            storedHashes.add(record.evidenceHash);
+                        }
+                    } catch (e) {
+                        console.warn(`Failed to read record ${i}:`, e);
+                    }
+                }
+                
+                console.log(`Successfully loaded ${allRecords.length} historical records`);
+                return allRecords;
+                
+            } catch (error) {
+                console.error('Failed to load records from blockchain:', error);
+                return [];
+            }
+        }
+        
+        // ============ Refresh Recent Notarization Records List ============
+        async function refreshRecordsList() {
+            if (!contract) {
+                const listDiv = document.getElementById('recordsList');
+                listDiv.innerHTML = '<div class="loading">Please connect to Ganache first...</div>';
+                return;
+            }
+            
+            const listDiv = document.getElementById('recordsList');
+            listDiv.innerHTML = '<div class="loading">⏳ Loading historical records from blockchain...</div>';
+            
+            try {
+                const allRecords = await loadAllRecordsFromBlockchain();
+                
+                if (allRecords.length === 0) {
+                    listDiv.innerHTML = '<div class="loading">📭 No notarization records yet. Please upload evidence first.</div>';
+                    return;
+                }
+                
+                // Sort descending by ID (latest first)
+                allRecords.reverse();
+                
+                let html = `<div style="margin-bottom: 10px; font-size: 12px; color: #666;">Total ${allRecords.length} notarized records</div>
+                    <table>
+                    <thead>
+                        <tr><th>ID</th><th>Filename</th><th>Attack Type</th><th>Source IP</th><th>Timestamp</th><th>Status</th></tr>
+                    </thead><tbody>`;
+                
+                for (const record of allRecords) {
+                    const fileNameShort = record.fileName.length > 25 ? record.fileName.substring(0, 22) + '...' : record.fileName;
+                    const attackTypeShort = record.attackType.length > 15 ? record.attackType.substring(0, 12) + '...' : record.attackType;
+                    
+                    html += `<tr>
+                        <td style="font-weight:bold;">${record.id}</td>
+                        <td title="${record.fileName}">${fileNameShort}</td>
+                        <td title="${record.attackType}">${attackTypeShort}</td>
+                        <td>${record.sourceIp}</td>
+                        <td>${formatTimestamp(record.timestamp)}</td>
+                        <td>${record.isActive ? '<span class="status success">Active</span>' : '<span class="status error">Revoked</span>'}</td>
+                    </tr>`;
+                }
+                
+                html += '</tbody></table>';
+                listDiv.innerHTML = html;
+                
+            } catch (error) {
+                console.error('Failed to refresh records list:', error);
+                listDiv.innerHTML = `<div class="result error">❌ Load failed: ${error.message}<br>Please check contract address</div>`;
+            }
+        }
+        
+        // ============ Check Duplicate Hash ============
+        async function checkDuplicate(evidenceHash) {
+            if (storedHashes.has(evidenceHash)) {
+                return { isDuplicate: true, source: 'cache' };
+            }
+            if (contract) {
+                try {
+                    const exists = await contract.methods.verifyEvidence(evidenceHash).call();
+                    if (exists) {
+                        storedHashes.add(evidenceHash);
+                        return { isDuplicate: true, source: 'chain' };
+                    }
+                } catch (e) {}
+            }
+            return { isDuplicate: false, source: null };
+        }
+        
+        // ============ Find Record by Hash ============
+        async function findRecordByHash(evidenceHash) {
+            if (!contract) return null;
+            const total = await contract.methods.getTotalRecords().call();
+            for (let i = 0; i < parseInt(total); i++) {
+                try {
+                    const record = await contract.methods.getRecord(i).call();
+                    if (record.evidenceHash === evidenceHash) {
+                        return { recordId: i, record: record };
+                    }
+                } catch (e) {
+                    continue;
+                }
+            }
+            return null;
+        }
+        
+        // ============ Update File Status Display ============
+        function updateFileStatus() {
+            const statusDiv = document.getElementById('fileStatus');
+            if (currentFileName) {
+                statusDiv.innerHTML = `
+                    <div class="file-info-bar">
+                        <span>📄 Current file: <strong>${currentFileName}</strong></span>
+                        <span>🔑 Hash: ${currentFileHash ? currentFileHash.substring(0, 16) + '...' : 'Not calculated'}</span>
+                        ${isTampered ? '<span class="tamper-badge">⚠️ Tampered</span>' : '<span class="status success">✓ Original state</span>'}
+                    </div>
+                `;
+            } else {
+                statusDiv.innerHTML = '';
+            }
+        }
+        
+        // ============ Connect to Ganache ============
+        document.getElementById('connectBtn').onclick = async () => {
+            try {
+                web3 = new Web3("http://127.0.0.1:7545");
+                const accounts = await web3.eth.getAccounts();
+                if (accounts.length === 0) throw new Error('No accounts found in Ganache. Please ensure it is running.');
+                currentAccount = accounts[0];
+                contract = new web3.eth.Contract(CONTRACT_ABI, CONTRACT_ADDRESS);
+                
+                const balance = web3.utils.fromWei(await web3.eth.getBalance(currentAccount), 'ether');
+                
+                // Critical: Load history after connection
+                document.getElementById('recordsList').innerHTML = '<div class="loading">⏳ Loading historical records...</div>';
+                await refreshRecordsList();
+                
+                document.getElementById('status').innerHTML = `
+                    <p class="status success">✅ Connected to Ganache!</p>
+                    <p><strong>Current account:</strong> ${currentAccount}</p>
+                    <p><strong>Balance:</strong> ${balance} ETH</p>
+                    <p><strong>Total on-chain records:</strong> ${totalRecords}</p>
+                `;
+                
+                // Enable all buttons
+                const btns = ['storeBtn', 'verifyBtn', 'tamperBtn', 'resetFileBtn', 'queryTotalBtn', 'refreshRecordsBtn', 'checkDuplicateBtn', 'refreshBalanceBtn'];
+                btns.forEach(id => {
+                    const btn = document.getElementById(id);
+                    if (btn) btn.disabled = false;
+                });
+                
+            } catch (error) {
+                document.getElementById('status').innerHTML = `<p class="status error">❌ Connection failed: ${error.message}<br>Please ensure Ganache is running at http://127.0.0.1:7545</p>`;
+                document.getElementById('recordsList').innerHTML = '<div class="loading">Connection failed. Please check Ganache.</div>';
+            }
+        };
+        
+        // Refresh balance
+        document.getElementById('refreshBalanceBtn').onclick = async () => {
+            if (!web3 || !currentAccount) return;
+            const balance = web3.utils.fromWei(await web3.eth.getBalance(currentAccount), 'ether');
+            const statusDiv = document.getElementById('status');
+            statusDiv.innerHTML = statusDiv.innerHTML.replace(/Balance:.*ETH/, `Balance: ${balance} ETH`);
+        };
+        
+        // ============ Read file and calculate hash ============
+        document.getElementById('jsonFile').onchange = async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            
+            currentFile = file;
+            currentFileName = file.name;
+            isTampered = false;
+            
+            const reader = new FileReader();
+            reader.onload = async (event) => {
+                originalFileContent = event.target.result;
+                currentFileContent = originalFileContent;
+                currentFileHash = await calculateSHA256(currentFileContent);
+                
+                const duplicateCheck = await checkDuplicate(currentFileHash);
+                
+                document.getElementById('fileInfo').innerHTML = `
+                    <div class="hash">
+                        <strong>📄 File Info:</strong><br>
+                        Filename: ${currentFileName}<br>
+                        Size: ${(currentFileContent.length / 1024).toFixed(2)} KB<br>
+                        SHA256 Hash: <span style="font-family:monospace;word-break:break-all;">${currentFileHash}</span>
+                        ${duplicateCheck.isDuplicate ? '<br><span class="status warning">⚠️ This hash has already been notarized!</span>' : '<br><span class="status success">✅ Hash is new, ready for notarization</span>'}
+                    </div>
+                `;
+                
+                if (duplicateCheck.isDuplicate) {
+                    const existingRecord = await findRecordByHash(currentFileHash);
+                    if (existingRecord) {
+                        document.getElementById('fileInfo').innerHTML += `
+                            <div class="warning" style="padding:10px;margin-top:10px;border-radius:6px;">
+                                <strong>⚠️ Duplicate Detection Result:</strong><br>
+                                This file has already been notarized!<br>
+                                <strong>Record ID:</strong> ${existingRecord.recordId}<br>
+                                <strong>Timestamp:</strong> ${formatTimestamp(existingRecord.record.timestamp)}<br>
+                                💡 No need to notarize again.
+                            </div>
+                        `;
+                        document.getElementById('storeBtn').disabled = true;
+                    } else {
+                        document.getElementById('storeBtn').disabled = false;
+                    }
+                } else {
+                    document.getElementById('storeBtn').disabled = false;
+                }
+                
+                updateFileStatus();
+            };
+            reader.readAsText(file);
+        };
+        
+        // ============ Notarize on Chain ============
+        document.getElementById('storeBtn').onclick = async () => {
+            if (!currentFile) {
+                alert('Please select a JSON file first');
+                return;
+            }
+            
+            const duplicateCheck = await checkDuplicate(currentFileHash);
+            if (duplicateCheck.isDuplicate) {
+                const existingRecord = await findRecordByHash(currentFileHash);
+                document.getElementById('storeResult').innerHTML = `
+                    <div class="result warning">
+                        <strong>⚠️ Duplicate Notarization!</strong><br>
+                        This file hash already exists on the blockchain.<br>
+                        ${existingRecord ? `<strong>Record ID:</strong> ${existingRecord.recordId}<br>
+                        <strong>Timestamp:</strong> ${formatTimestamp(existingRecord.record.timestamp)}` : ''}
+                    </div>
+                `;
+                return;
+            }
+            
+            const caseId = document.getElementById('caseId').value;
+            const evidenceName = document.getElementById('evidenceName').value;
+            const description = document.getElementById('description').value;
+            const attackType = document.getElementById('attackType').value;
+            const sourceIp = document.getElementById('sourceIp').value;
+            const targetUrl = document.getElementById('targetUrl').value;
+            
+            if (!caseId || !evidenceName) {
+                alert('Please fill in Case ID and Evidence Name');
+                return;
+            }
+            
+            const resultDiv = document.getElementById('storeResult');
+            resultDiv.innerHTML = '⏳ Submitting to blockchain...';
+            
+            try {
+                const startTime = Date.now();
+                const tx = await contract.methods.storeJSONEvidence(
+                    caseId, currentFileHash, evidenceName, description,
+                    currentFileName, attackType || "unknown", sourceIp || "unknown", targetUrl || "unknown"
+                ).send({ from: currentAccount, gas: 3000000 });
+                const duration = (Date.now() - startTime) / 1000;
+                
+                storedHashes.add(currentFileHash);
+                await refreshRecordsList();
+                
+                resultDiv.innerHTML = `
+                    <div class="result">
+                        <strong>✅ Notarization Successful!</strong><br>
+                        <strong>Tx Hash:</strong> <span class="hash">${tx.transactionHash}</span><br>
+                        <strong>Block Number:</strong> ${tx.blockNumber}<br>
+                        <strong>Gas Used:</strong> ${tx.gasUsed}<br>
+                        <strong>Evidence Hash:</strong> <span class="hash">${currentFileHash}</span><br>
+                        <strong>Time taken:</strong> ${duration} seconds<br>
+                        <strong>Gas Fee:</strong> ${web3.utils.fromWei((tx.gasUsed * 2000000000).toString(), 'ether')} ETH
+                    </div>
+                `;
+                
+                // Clear file selection
+                document.getElementById('jsonFile').value = '';
+                document.getElementById('fileInfo').innerHTML = '';
+                currentFile = null;
+                currentFileContent = null;
+                currentFileHash = null;
+                isTampered = false;
+                updateFileStatus();
+                
+            } catch (error) {
+                resultDiv.innerHTML = `<div class="result error">❌ Notarization failed: ${error.message}</div>`;
+            }
+        };
+        
+        // ============ Simulate File Tampering ============
+        document.getElementById('tamperBtn').onclick = () => {
+            if (!currentFileContent) {
+                alert('Please select a JSON file first');
+                return;
+            }
+            
+            try {
+                if (!originalFileContent || !isTampered) {
+                    originalFileContent = currentFileContent;
+                }
+                
+                const jsonData = JSON.parse(currentFileContent);
+                
+                jsonData.attackType = "[Tampered]" + (jsonData.attackType || "unknown");
+                if (jsonData.sourceIp) {
+                    jsonData.sourceIp = "[Tampered]" + jsonData.sourceIp;
+                }
+                if (jsonData.targetUrl) {
+                    jsonData.targetUrl = jsonData.targetUrl + "?tampered=true";
+                }
+                jsonData.tampered = true;
+                jsonData.tampered_at = new Date().toISOString();
+                
+                currentFileContent = JSON.stringify(jsonData, null, 2);
+                isTampered = true;
+                
+                (async () => {
+                    const newHash = await calculateSHA256(currentFileContent);
+                    document.getElementById('verifyResult').innerHTML = `
+                        <div class="result warning">
+                            <strong>⚠️ File has been tampered (simulated)!</strong><br>
+                            <strong>Original Hash:</strong> <span class="hash">${currentFileHash}</span><br>
+                            <strong>Tampered Hash:</strong> <span class="hash">${newHash}</span><br>
+                            💡 Click "Verify Integrity" to check on-chain result (should fail).<br>
+                            💡 Click "Restore Original" to recover.
+                        </div>
+                    `;
+                    updateFileStatus();
+                })();
+                
+            } catch (error) {
+                document.getElementById('verifyResult').innerHTML = `<div class="result error">❌ Tampering failed: ${error.message}</div>`;
+            }
+        };
+        
+        // ============ Restore Original File ============
+        document.getElementById('resetFileBtn').onclick = async () => {
+            if (!originalFileContent) {
+                alert('No original file to restore');
+                return;
+            }
+            
+            currentFileContent = originalFileContent;
+            isTampered = false;
+            currentFileHash = await calculateSHA256(currentFileContent);
+            
+            document.getElementById('verifyResult').innerHTML = `
+                <div class="result">
+                    <strong>✅ File restored!</strong><br>
+                    <strong>Restored Hash:</strong> <span class="hash">${currentFileHash}</span><br>
+                    💡 Click "Verify Integrity" to check on-chain result (should pass).
+                </div>
+            `;
+            updateFileStatus();
+        };
+        
+        // ============ Verify File Integrity ============
+        document.getElementById('verifyBtn').onclick = async () => {
+            let evidenceHash = document.getElementById('verifyHashInput').value.trim();
+            const verifyFile = document.getElementById('verifyFile').files[0];
+            const resultDiv = document.getElementById('verifyResult');
+            
+            if (evidenceHash && !verifyFile) {
+                resultDiv.innerHTML = '⏳ Checking...';
+                try {
+                    const exists = await contract.methods.verifyEvidence(evidenceHash).call();
+                    if (exists) {
+                        const record = await findRecordByHash(evidenceHash);
+                        resultDiv.innerHTML = `<div class="result">✅ Evidence hash exists on-chain! ${record ? `<br>Record ID: ${record.recordId}<br>Timestamp: ${formatTimestamp(record.record.timestamp)}` : ''}</div>`;
+                    } else {
+                        resultDiv.innerHTML = `<div class="result error">❌ Evidence hash not found on-chain</div>`;
+                    }
+                } catch (error) {
+                    resultDiv.innerHTML = `<div class="result error">Query failed: ${error.message}</div>`;
+                }
+                return;
+            }
+            
+            if (!verifyFile && !currentFileContent) {
+                alert('Please select a JSON file to verify, or enter an evidence hash');
+                return;
+            }
+            
+            resultDiv.innerHTML = '⏳ Verifying...';
+            
+            const processFile = async (fileContent) => {
+                const calculatedHash = await calculateSHA256(fileContent);
+                const targetHash = evidenceHash || currentFileHash;
+                
+                if (!targetHash) {
+                    resultDiv.innerHTML = `<div class="result error">Unable to get hash, please select a file or enter a hash</div>`;
+                    return;
+                }
+                
+                try {
+                    const exists = await contract.methods.verifyEvidence(targetHash).call();
+                    
+                    if (!exists) {
+                        resultDiv.innerHTML = `<div class="result error">❌ Evidence hash not found on-chain</div>`;
+                        return;
+                    }
+                    
+                    const record = await findRecordByHash(targetHash);
+                    const isMatch = (calculatedHash === targetHash);
+                    
+                    if (isMatch) {
+                        resultDiv.innerHTML = `
+                            <div class="result">
+                                <strong>✅ Verification passed! File has not been tampered.</strong><br>
+                                <strong>File Hash:</strong> <span class="hash">${calculatedHash}</span><br>
+                                ${record ? `<strong>Notarized at:</strong> ${formatTimestamp(record.record.timestamp)}<br>
+                                <strong>Case ID:</strong> ${record.record.caseId}<br>
+                                <strong>Filename:</strong> ${record.record.fileName}` : ''}
+                            </div>
+                        `;
+                    } else {
+                        resultDiv.innerHTML = `
+                            <div class="result error">
+                                <strong>❌ Verification failed! File has been tampered or does not match.</strong><br>
+                                <strong>Current file hash:</strong> <span class="hash">${calculatedHash}</span><br>
+                                <strong>Stored on-chain hash:</strong> <span class="hash">${targetHash}</span><br>
+                                ⚠️ Hashes do not match. The file has been altered!
+                            </div>
+                        `;
+                    }
+                } catch (error) {
+                    resultDiv.innerHTML = `<div class="result error">Verification failed: ${error.message}</div>`;
+                }
+            };
+            
+            if (verifyFile) {
+                const reader = new FileReader();
+                reader.onload = async (e) => {
+                    await processFile(e.target.result);
+                };
+                reader.readAsText(verifyFile);
+            } else if (currentFileContent) {
+                await processFile(currentFileContent);
+            }
+        };
+        
+        // ============ Query Total Record Count ============
+        document.getElementById('queryTotalBtn').onclick = async () => {
+            try {
+                const total = await contract.methods.getTotalRecords().call();
+                document.getElementById('queryResult').innerHTML = `
+                    <div class="result">
+                        <strong>📊 Total notarized records on chain: ${total}</strong><br>
+                        Each record stores only the hash (64 bytes), which is faster than previous versions.
+                    </div>
+                `;
+                await refreshRecordsList();
+            } catch (error) {
+                document.getElementById('queryResult').innerHTML = `<div class="result error">Query failed: ${error.message}</div>`;
+            }
+        };
+        
+        // ============ Duplicate Check ============
+        document.getElementById('checkDuplicateBtn').onclick = async () => {
+            const evidenceHash = document.getElementById('duplicateHash').value.trim();
+            if (!evidenceHash) {
+                alert('Please enter an evidence hash');
+                return;
+            }
+            
+            if (evidenceHash.length !== 64) {
+                document.getElementById('duplicateResult').innerHTML = `<div class="result warning">⚠️ Hash length must be 64 hex characters</div>`;
+                return;
+            }
+            
+            try {
+                const exists = await contract.methods.verifyEvidence(evidenceHash).call();
+                
+                if (exists) {
+                    const record = await findRecordByHash(evidenceHash);
+                    document.getElementById('duplicateResult').innerHTML = `
+                        <div class="result warning">
+                            <strong>⚠️ This hash is already notarized!</strong><br>
+                            <strong>Evidence Hash:</strong> <span class="hash">${evidenceHash}</span><br>
+                            ${record ? `
+                            <strong>Record ID:</strong> ${record.recordId}<br>
+                            <strong>Timestamp:</strong> ${formatTimestamp(record.record.timestamp)}<br>
+                            <strong>Case ID:</strong> ${record.record.caseId}<br>
+                            <strong>Filename:</strong> ${record.record.fileName}<br>
+                            💡 No need to notarize again.
+                            ` : ''}
+                        </div>
+                    `;
+                } else {
+                    document.getElementById('duplicateResult').innerHTML = `
+                        <div class="result">
+                            <strong>✅ This hash is NOT notarized</strong><br>
+                            <strong>Evidence Hash:</strong> <span class="hash">${evidenceHash}</span><br>
+                            You can upload this file for notarization.
+                        </div>
+                    `;
+                }
+            } catch (error) {
+                document.getElementById('duplicateResult').innerHTML = `<div class="result error">Check failed: ${error.message}</div>`;
+            }
+        };
+        
+        // ============ Refresh Records List ============
+        document.getElementById('refreshRecordsBtn').onclick = async () => {
+            await refreshRecordsList();
+            document.getElementById('queryResult').innerHTML = `<div class="result">✅ Refreshed. Current total: ${totalRecords} records</div>`;
+        };
+    </script>
+</body>
+</html>
