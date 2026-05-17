@@ -1,7 +1,12 @@
 import { ethers } from "ethers";
 import { Blocks, Link, SearchCheck, Upload } from "lucide-react";
 import { useState } from "react";
-import { evidenceRegistryAbi, sha256Hex } from "../lib/blockchain";
+import {
+  evidenceRegistryAbi,
+  getDefaultEvidenceRegistryAddress,
+  rememberEvidenceRegistryAddress,
+  sha256Hex
+} from "../lib/blockchain";
 
 type EthereumWindow = Window & {
   ethereum?: ethers.Eip1193Provider;
@@ -9,7 +14,7 @@ type EthereumWindow = Window & {
 
 export function BlockchainEvidence() {
   const [account, setAccount] = useState("");
-  const [contractAddress, setContractAddress] = useState(import.meta.env.VITE_DEFAULT_CONTRACT_ADDRESS ?? "");
+  const [contractAddress, setContractAddress] = useState(getDefaultEvidenceRegistryAddress);
   const [caseId, setCaseId] = useState("CASE-001");
   const [evidenceName, setEvidenceName] = useState("Forensic Evidence Report");
   const [fileName, setFileName] = useState("evidence.json");
@@ -47,6 +52,11 @@ export function BlockchainEvidence() {
     if (!file) return;
     setFileName(file.name);
     setHash(await sha256Hex(file));
+  }
+
+  function updateContractAddress(address: string) {
+    setContractAddress(address);
+    rememberEvidenceRegistryAddress(address);
   }
 
   async function storeEvidence() {
@@ -101,7 +111,7 @@ export function BlockchainEvidence() {
             <Blocks size={18} />
           </div>
           <label>Contract Address</label>
-          <input value={contractAddress} onChange={(event) => setContractAddress(event.target.value)} />
+          <input value={contractAddress} onChange={(event) => updateContractAddress(event.target.value)} />
           <label>Evidence File</label>
           <input type="file" accept=".json,.txt,.csv" onChange={(event) => handleFile(event.target.files?.[0])} />
           <label>SHA-256 Hash</label>
@@ -136,4 +146,3 @@ export function BlockchainEvidence() {
     </section>
   );
 }
-

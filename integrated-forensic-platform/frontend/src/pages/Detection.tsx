@@ -1,6 +1,23 @@
-import { Play, RotateCcw } from "lucide-react";
+import { ethers } from "ethers";
+import { DatabaseZap, Play, RotateCcw, ShieldCheck } from "lucide-react";
 import { FormEvent, useMemo, useState } from "react";
-import { jsonRequest, ML_API, PredictionResult } from "../lib/api";
+import { authHeader, DocumentSummary, jsonRequest, ML_API, PredictionResult, SE_API } from "../lib/api";
+import {
+  evidenceRegistryAbi,
+  getDefaultEvidenceRegistryAddress,
+  rememberEvidenceRegistryAddress
+} from "../lib/blockchain";
+
+type AuthResponse = {
+  token: string;
+  username: string;
+};
+
+type EthereumWindow = Window & {
+  ethereum?: ethers.Eip1193Provider;
+};
+
+type PreservationStage = "idle" | "saving" | "notarizing" | "done" | "error";
 
 const sampleFeatures = {
   dur: 0.121,
@@ -22,9 +39,15 @@ const sampleFeatures = {
 
 export function Detection() {
   const [featuresText, setFeaturesText] = useState(JSON.stringify(sampleFeatures, null, 2));
+  const [submittedFeatures, setSubmittedFeatures] = useState<Record<string, unknown> | null>(null);
   const [result, setResult] = useState<PredictionResult | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [contractAddress, setContractAddress] = useState(getDefaultEvidenceRegistryAddress);
+  const [preservationStage, setPreservationStage] = useState<PreservationStage>("idle");
+  const [preservationStatus, setPreservationStatus] = useState("");
+  const [vaultDocument, setVaultDocument] = useState<DocumentSummary | null>(null);
+  const [chainTxHash, setChainTxHash] = useState("");
 
   const featureCount = useMemo(() => {
     try {
@@ -45,12 +68,164 @@ export function Detection() {
         body: JSON.stringify({ features: parsed })
       });
       setResult(response);
+      setSubmittedFeatures(parsed);
+      resetPreservationState();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Prediction failed");
     } finally {
       setLoading(false);
     }
   }
+
+  function resetPreservationState() {
+    setPreservationStage("idle");
+    setPreservationStatus("");
+    setVaultDocument(null);
+    setChainTxHash("");
+  }
+
+  function updateContractAddress(address: string) {
+    setContractAddress(address);
+    rememberEvidenceRegistryAddress(address);
+  }
+
+  async function ensureVaultToken(): Promise<string> {
+    const storedToken = localStorage.getItem("se_token") ?? "";
+    if (storedToken) {
+      try {
+        await jsonRequest<DocumentSummary[]>(`${SE_API}/api/se/documents`, {
+          headers: authHeader(storedToken)
+        });
+        return storedToken;
+      } catch {
+        localStorage.removeItem("se_token");
+      }
+    }
+
+    const username = import.meta.env.VITE_SE_DEMO_USERNAME ?? "demo";
+    const password = import.meta.env.VITE_SE_DEMO_PASSWORD ?? "demo123";
+    let response: AuthResponse;
+    try {
+      response = await jsonRequest<AuthResponse>(`${SE_API}/api/se/auth/login`, {
+        method: "POST",
+        body: JSON.stringify({ username, password })
+      });
+    } catch {
+      response = await jsonRequest<AuthResponse>(`${SE_API}/api/se/auth/register`, {
+        method: "POST",
+        body: JSON.stringify({ username, password })
+      });
+    }
+
+    localStorage.setItem("se_token", response.token);
+    localStorage.setItem("se_user", response.username);
+    return response.token;
+  }
+
+  async function getEvidenceContract() {
+    const ethereum = (window as EthereumWindow).ethereum;
+    if (!ethereum) {
+      throw new Error("未检测到 MetaMask 或浏览器钱包，无法执行链上存证。");
+    }
+    if (!contractAddress.trim()) {
+      throw new Error("请先填写 EvidenceRegistry 合约地址。");
+    }
+    await ethereum.request({ method: "eth_requestAccounts" });
+    const provider = new ethers.BrowserProvider(ethereum);
+    const signer = await provider.getSigner();
+    return new ethers.Contract(contractAddress.trim(), evidenceRegistryAbi, signer);
+  }
+
+  function createEvidenceDocId(hash: string) {
+    return `DET-${Date.now().toString(36).toUpperCase()}-${hash.slice(0, 8)}`;
+  }
+
+  function inferField(features: Record<string, unknown>, candidates: string[], fallback: string) {
+    for (const key of candidates) {
+      const value = features[key];
+      if (value !== undefined && value !== null && String(value).trim()) {
+        return String(value);
+      }
+    }
+    return fallback;
+  }
+
+  function buildEvidencePayload(docId: string, features: Record<string, unknown>, prediction: PredictionResult) {
+    return {
+      Evidence_ID: docId,
+      Timestamp: new Date().toISOString(),
+      Evidence_Type: "Network intrusion detection result",
+      Prediction: prediction.prediction,
+      Probability: prediction.probability ?? {},
+      Forensic_Metrics: {
+        filled_feature_count: prediction.filled_feature_count,
+        missing_feature_count: prediction.missing_feature_count
+      },
+      Detection_Features: features,
+      Blockchain_SHA256_Hash: prediction.evidence_hash,
+      Searchable_Keywords: [
+        "detection",
+        "intrusion",
+        "prediction",
+        String(prediction.prediction),
+        prediction.evidence_hash.slice(0, 12)
+      ]
+    };
+  }
+
+  async function preserveResult() {
+    if (!result || !submittedFeatures) return;
+
+    setPreservationStage("saving");
+    setPreservationStatus("正在写入加密证据库...");
+    setVaultDocument(null);
+    setChainTxHash("");
+
+    try {
+      const docId = createEvidenceDocId(result.evidence_hash);
+      const evidencePayload = buildEvidencePayload(docId, submittedFeatures, result);
+      const token = await ensureVaultToken();
+      const form = new FormData();
+      form.set("docId", docId);
+      form.set(
+        "description",
+        `intrusion detection ${String(result.prediction)} evidence ${result.evidence_hash}`
+      );
+      form.set("text", JSON.stringify(evidencePayload, null, 2));
+
+      const savedDocument = await jsonRequest<DocumentSummary>(`${SE_API}/api/se/documents/upload`, {
+        method: "POST",
+        headers: authHeader(token),
+        body: form
+      });
+      setVaultDocument(savedDocument);
+      setPreservationStage("notarizing");
+      setPreservationStatus(`已加密保存为 ${savedDocument.docId}，正在提交链上交易...`);
+
+      const contract = await getEvidenceContract();
+      const tx = await contract.storeJSONEvidence(
+        savedDocument.docId,
+        result.evidence_hash,
+        "IDS Detection Result",
+        `Encrypted vault record ${savedDocument.docId}; prediction ${String(result.prediction)}`,
+        savedDocument.fileName,
+        String(result.prediction),
+        inferField(submittedFeatures, ["sourceIp", "source_ip", "src_ip", "saddr"], "N/A"),
+        inferField(submittedFeatures, ["targetUrl", "target_url", "dst_ip", "daddr"], "N/A")
+      );
+      setChainTxHash(tx.hash);
+      setPreservationStatus(`交易已提交：${tx.hash}`);
+      await tx.wait();
+      setPreservationStage("done");
+      setPreservationStatus(`完整流程完成：${savedDocument.docId} 已加密保存并完成链上存证。`);
+    } catch (err) {
+      setPreservationStage("error");
+      setPreservationStatus(err instanceof Error ? err.message : "保存与链上存证流程失败");
+    }
+  }
+
+  const preserving = preservationStage === "saving" || preservationStage === "notarizing";
+  const canPreserve = Boolean(result && submittedFeatures && contractAddress.trim() && !preserving);
 
   return (
     <section className="page">
@@ -82,8 +257,10 @@ export function Detection() {
               type="button"
               onClick={() => {
                 setFeaturesText(JSON.stringify(sampleFeatures, null, 2));
+                setSubmittedFeatures(null);
                 setResult(null);
                 setError("");
+                resetPreservationState();
               }}
             >
               <RotateCcw size={17} /> 重置样例
@@ -118,6 +295,38 @@ export function Detection() {
                   ))}
                 </div>
               )}
+              <div className="preservation-flow">
+                <div className="pipeline-steps">
+                  <span className={vaultDocument ? "pipeline-step done" : preservationStage === "saving" ? "pipeline-step active" : "pipeline-step"}>
+                    <DatabaseZap size={16} /> 加密证据库
+                  </span>
+                  <span className={preservationStage === "done" ? "pipeline-step done" : preservationStage === "notarizing" ? "pipeline-step active" : "pipeline-step"}>
+                    <ShieldCheck size={16} /> 链上存证
+                  </span>
+                </div>
+                <label>EvidenceRegistry 合约地址</label>
+                <input
+                  value={contractAddress}
+                  onChange={(event) => updateContractAddress(event.target.value)}
+                  placeholder="0x..."
+                />
+                <div className="button-row">
+                  <button className="primary-action" type="button" disabled={!canPreserve} onClick={preserveResult}>
+                    <DatabaseZap size={17} /> {preserving ? "流程执行中" : "保存证据库并链上存证"}
+                  </button>
+                </div>
+                {vaultDocument && (
+                  <div className="kv-grid compact">
+                    <span>证据库 ID</span><strong>{vaultDocument.docId}</strong>
+                    <span>链上交易</span><code>{chainTxHash || "等待提交"}</code>
+                  </div>
+                )}
+                {preservationStatus && (
+                  <div className={preservationStage === "error" ? "notice danger" : "notice success"}>
+                    {preservationStatus}
+                  </div>
+                )}
+              </div>
             </div>
           ) : (
             <div className="empty-state">运行一次检测后，这里会显示预测类别、概率和可用于链上存证的哈希。</div>
@@ -127,4 +336,3 @@ export function Detection() {
     </section>
   );
 }
-

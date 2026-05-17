@@ -2,6 +2,8 @@ package com.bdic.web;
 
 import jakarta.validation.constraints.NotBlank;
 
+import java.util.List;
+
 record AuthRequest(@NotBlank String username, @NotBlank String password) {
 }
 
@@ -17,8 +19,15 @@ record DocumentDto(
         int keywordCount,
         String createdAt,
         String plaintextPreview,
-        String ciphertextBase64
+        String ciphertextBase64,
+        SpreadsheetPreview spreadsheetPreview
 ) {
+}
+
+record SpreadsheetPreview(List<SpreadsheetSheetPreview> sheets, boolean truncated) {
+}
+
+record SpreadsheetSheetPreview(String name, List<List<String>> rows, int rowCount, int columnCount, boolean truncated) {
 }
 
 record DeleteResponse(boolean deleted) {
@@ -27,3 +36,5 @@ record DeleteResponse(boolean deleted) {
 record HealthResponse(String status, String service) {
 }
 
+record DocumentDownload(byte[] content, String fileName, String mimeType) {
+}

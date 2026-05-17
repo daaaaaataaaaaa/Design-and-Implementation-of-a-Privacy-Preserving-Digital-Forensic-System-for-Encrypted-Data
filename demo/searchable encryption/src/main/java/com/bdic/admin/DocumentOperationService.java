@@ -118,6 +118,32 @@ public class DocumentOperationService {
         return data;
     }
 
+    public EncryptedData migrateEncryption(
+            EncryptedData data,
+            SecretKey sourceDesKey,
+            SecretKey targetDesKey,
+            PublicKey targetPeksPublicKey,
+            Component parent
+    ) throws Exception {
+        String[] originalKeywords = resolveOriginalKeywords(data, sourceDesKey, parent);
+        if (originalKeywords == null || originalKeywords.length == 0) {
+            throw new IllegalStateException("No keywords available for reindexing.");
+        }
+
+        List<byte[]> rebuiltCiphertexts = new ArrayList<>();
+        for (String token : buildSearchableTokens(originalKeywords)) {
+            rebuiltCiphertexts.add(PEKSUtil.encrypt(targetPeksPublicKey, token));
+        }
+
+        if (data.getEncryptedContent() != null) {
+            byte[] plaintext = DESUtil.decrypt(data.getEncryptedContent(), sourceDesKey);
+            data.setEncryptedContent(DESUtil.encrypt(plaintext, targetDesKey));
+        }
+        data.setPeksCiphertexts(rebuiltCiphertexts);
+        data.setEncryptedKeywordMetadata(encryptKeywordMetadata(originalKeywords, targetDesKey));
+        return data;
+    }
+
     /**
      * 收集文件夹下所有普通文件，并按路径排序，供批量上传使用。
      */
@@ -290,8 +316,12 @@ public class DocumentOperationService {
                 || normalizedName.endsWith(".json")) {
             return "text";
         }
+        if (normalizedName.endsWith(".xls") || normalizedName.endsWith(".xlsx") || normalizedName.endsWith(".csv")
+                || normalizedMimeType.contains("spreadsheet") || normalizedMimeType.contains("excel")) {
+            return "spreadsheet";
+        }
         if (normalizedName.endsWith(".pdf") || normalizedName.endsWith(".doc") || normalizedName.endsWith(".docx")
-                || normalizedName.endsWith(".xls") || normalizedName.endsWith(".xlsx") || normalizedName.endsWith(".ppt")
+                || normalizedName.endsWith(".ppt")
                 || normalizedName.endsWith(".pptx")) {
             return "document";
         }
