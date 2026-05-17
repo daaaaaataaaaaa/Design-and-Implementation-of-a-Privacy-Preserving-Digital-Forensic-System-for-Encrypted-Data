@@ -10,17 +10,28 @@ import com.bdic.db.EncryptedDataRepository;
 import com.bdic.db.UserRepository;
 import com.bdic.model.DocumentSummary;
 import com.bdic.model.EncryptedData;
+import com.bdic.text.DocumentTextExtractor;
+import org.apache.poi.ss.usermodel.Cell;
+import org.apache.poi.ss.usermodel.DataFormatter;
+import org.apache.poi.ss.usermodel.FormulaEvaluator;
+import org.apache.poi.ss.usermodel.Row;
+import org.apache.poi.ss.usermodel.Sheet;
+import org.apache.poi.ss.usermodel.Workbook;
+import org.apache.poi.ss.usermodel.WorkbookFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -29,11 +40,16 @@ import java.util.concurrent.ConcurrentHashMap;
 public class SearchableEncryptionFacade {
 
     private static final long MAX_AUTOMATIC_TEXT_KEYWORD_BYTES = 10L * 1024L * 1024L;
-    private static final int PREVIEW_LIMIT = 8_000;
+    private static final int PREVIEW_LIMIT = 200_000;
+    private static final int SPREADSHEET_PREVIEW_MAX_SHEETS = 3;
+    private static final int SPREADSHEET_PREVIEW_MAX_ROWS = 40;
+    private static final int SPREADSHEET_PREVIEW_MAX_COLUMNS = 12;
 
     private final EncryptedDataRepository repository;
     private final UserRepository userRepository;
     private final ClientKeyManager keyManager;
+    private final ClientKeyManager legacyKeyManager;
+    private final Path legacyKeyDirectory;
     private final DocumentOperationService operationService;
     private final Map<String, UserSession> sessions = new ConcurrentHashMap<>();
 
@@ -43,6 +59,8 @@ public class SearchableEncryptionFacade {
         this.repository = new EncryptedDataRepository(databaseManager);
         this.userRepository = new UserRepository(databaseManager);
         this.keyManager = new ClientKeyManager(Path.of(System.getProperty("user.home"), ".integrated-forensics", "client-keys"));
+        this.legacyKeyDirectory = Path.of(System.getProperty("user.home"), ".searchable-encryption", "client-keys");
+        this.legacyKeyManager = new ClientKeyManager(legacyKeyDirectory);
         this.operationService = new DocumentOperationService(MAX_AUTOMATIC_TEXT_KEYWORD_BYTES);
     }
 
@@ -88,8 +106,8 @@ public class SearchableEncryptionFacade {
         if (!StringUtils.hasText(keyword)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "keyword is required.");
         }
-        byte[] trapdoor = PEKSUtil.getTrapdoor(session.keys().peksPrivateKey(), keyword);
-        return repository.searchByTrapdoor(session.username(), trapdoor).stream()
+        byte[] queryCiphertext = PEKSUtil.encrypt(session.keys().peksPublicKey(), keyword);
+        return repository.searchByCiphertext(session.username(), queryCiphertext).stream()
                 .map(data -> fromEncryptedData(data, null, null))
                 .toList();
     }
@@ -102,10 +120,18 @@ public class SearchableEncryptionFacade {
 
         String plaintextPreview = null;
         String ciphertextBase64 = null;
+        SpreadsheetPreview spreadsheetPreview = null;
         try {
+            byte[] plaintext = decryptContent(session, data);
             if (operationService.isTextDocument(data)) {
-                byte[] plaintext = DESUtil.decrypt(data.getEncryptedContent(), session.keys().desKey());
                 plaintextPreview = truncate(new String(plaintext, StandardCharsets.UTF_8), PREVIEW_LIMIT);
+            } else if (isSpreadsheet(data)) {
+                spreadsheetPreview = previewSpreadsheet(data, plaintext);
+                if (spreadsheetPreview == null || spreadsheetPreview.sheets().isEmpty()) {
+                    plaintextPreview = "No readable spreadsheet preview was extracted from this file. Use Download to inspect the original file.";
+                }
+            } else if ("document".equalsIgnoreCase(data.getMediaType())) {
+                plaintextPreview = previewDocumentText(data, plaintext);
             } else if (data.getEncryptedContent() != null) {
                 ciphertextBase64 = Base64.getEncoder().encodeToString(data.getEncryptedContent());
             }
@@ -113,7 +139,36 @@ public class SearchableEncryptionFacade {
             ciphertextBase64 = data.getEncryptedContent() == null ? null : Base64.getEncoder().encodeToString(data.getEncryptedContent());
         }
 
-        return fromEncryptedData(data, plaintextPreview, ciphertextBase64);
+        return fromEncryptedData(data, plaintextPreview, ciphertextBase64, spreadsheetPreview);
+    }
+
+    DocumentDownload download(UserSession session, String docId) throws Exception {
+        EncryptedData data = repository.findByOwnerAndDocId(session.username(), docId);
+        if (data == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Document not found.");
+        }
+        if (data.getEncryptedContent() == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Document content not found.");
+        }
+
+        byte[] plaintext = decryptContent(session, data);
+        String fileName = StringUtils.hasText(data.getFileName()) ? data.getFileName() : data.getDocId();
+        String mimeType = StringUtils.hasText(data.getMimeType()) ? data.getMimeType() : "application/octet-stream";
+        return new DocumentDownload(plaintext, fileName, mimeType);
+    }
+
+    DocumentDto rebuildIndex(UserSession session, String docId) throws Exception {
+        EncryptedData data = repository.findByOwnerAndDocId(session.username(), docId);
+        if (data == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Document not found.");
+        }
+        if (data.getEncryptedKeywordMetadata() == null || data.getEncryptedKeywordMetadata().length == 0) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Keyword metadata is unavailable for this document.");
+        }
+
+        EncryptedData rebuilt = rebuildOrMigrateIndex(session, data);
+        repository.save(session.username(), rebuilt);
+        return fromEncryptedData(rebuilt, null, null);
     }
 
     boolean delete(UserSession session, String docId) {
@@ -131,8 +186,13 @@ public class SearchableEncryptionFacade {
 
     private AuthResponse createSession(String username) {
         String token = UUID.randomUUID().toString();
-        sessions.put(token, new UserSession(username, keyManager.loadOrCreate(username)));
+        sessions.put(token, new UserSession(username, keyManager.loadOrCreate(username), loadLegacyKeys(username)));
         return new AuthResponse(token, username);
+    }
+
+    private ClientKeyManager.KeyBundle loadLegacyKeys(String username) {
+        Path legacyKeyFile = legacyKeyDirectory.resolve(username + ".properties");
+        return Files.exists(legacyKeyFile) ? legacyKeyManager.loadOrCreate(username) : null;
     }
 
     private UploadContent resolveUploadContent(String docId, String text, MultipartFile file) throws Exception {
@@ -142,7 +202,16 @@ public class SearchableEncryptionFacade {
             Path tempFile = Files.createTempFile("se-upload-", suffix);
             try {
                 file.transferTo(tempFile);
-                return operationService.resolveFileUploadContent(tempFile);
+                UploadContent resolved = operationService.resolveFileUploadContent(tempFile);
+                return new UploadContent(
+                        resolved.originalContent(),
+                        originalName,
+                        resolved.mimeType(),
+                        resolved.mediaType(),
+                        resolved.fileSize(),
+                        resolved.extractedText(),
+                        resolved.automaticTextKeywordsEnabled()
+                );
             } finally {
                 Files.deleteIfExists(tempFile);
             }
@@ -164,11 +233,21 @@ public class SearchableEncryptionFacade {
                 summary.getKeywordCount(),
                 summary.getCreatedAt() == null ? null : summary.getCreatedAt().toString(),
                 null,
+                null,
                 null
         );
     }
 
     private static DocumentDto fromEncryptedData(EncryptedData data, String plaintextPreview, String ciphertextBase64) {
+        return fromEncryptedData(data, plaintextPreview, ciphertextBase64, null);
+    }
+
+    private static DocumentDto fromEncryptedData(
+            EncryptedData data,
+            String plaintextPreview,
+            String ciphertextBase64,
+            SpreadsheetPreview spreadsheetPreview
+    ) {
         int keywordCount = data.getPeksCiphertexts() == null ? 0 : data.getPeksCiphertexts().size();
         return new DocumentDto(
                 data.getDocId(),
@@ -179,7 +258,8 @@ public class SearchableEncryptionFacade {
                 keywordCount,
                 null,
                 plaintextPreview,
-                ciphertextBase64
+                ciphertextBase64,
+                spreadsheetPreview
         );
     }
 
@@ -200,7 +280,212 @@ public class SearchableEncryptionFacade {
         return value.substring(0, limit) + "\n...";
     }
 
-    record UserSession(String username, ClientKeyManager.KeyBundle keys) {
+    private byte[] decryptContent(UserSession session, EncryptedData data) throws Exception {
+        try {
+            return DESUtil.decrypt(data.getEncryptedContent(), session.keys().desKey());
+        } catch (Exception currentKeyFailure) {
+            if (session.legacyKeys() != null) {
+                try {
+                    return DESUtil.decrypt(data.getEncryptedContent(), session.legacyKeys().desKey());
+                } catch (Exception legacyKeyFailure) {
+                    currentKeyFailure.addSuppressed(legacyKeyFailure);
+                }
+            }
+            throw currentKeyFailure;
+        }
+    }
+
+    private EncryptedData rebuildOrMigrateIndex(UserSession session, EncryptedData data) throws Exception {
+        try {
+            return operationService.rebuildIndex(
+                    data,
+                    session.keys().desKey(),
+                    session.keys().peksPublicKey(),
+                    null
+            );
+        } catch (Exception currentKeyFailure) {
+            if (session.legacyKeys() != null) {
+                try {
+                    return operationService.migrateEncryption(
+                            data,
+                            session.legacyKeys().desKey(),
+                            session.keys().desKey(),
+                            session.keys().peksPublicKey(),
+                            null
+                    );
+                } catch (Exception legacyKeyFailure) {
+                    currentKeyFailure.addSuppressed(legacyKeyFailure);
+                }
+            }
+            throw currentKeyFailure;
+        }
+    }
+
+    private static String previewDocumentText(EncryptedData data, byte[] plaintext) throws Exception {
+        String fileName = StringUtils.hasText(data.getFileName()) ? data.getFileName() : data.getDocId();
+        String suffix = fileName.contains(".") ? fileName.substring(fileName.lastIndexOf('.')) : ".bin";
+        Path tempFile = Files.createTempFile("se-preview-", suffix);
+        try {
+            Files.write(tempFile, plaintext);
+            String extractedText = DocumentTextExtractor.extract(tempFile, data.getMimeType(), data.getMediaType());
+            if (!StringUtils.hasText(extractedText)) {
+                return "No readable text preview was extracted from this document. Use Download to inspect the original file.";
+            }
+            return truncate(extractedText, PREVIEW_LIMIT);
+        } finally {
+            Files.deleteIfExists(tempFile);
+        }
+    }
+
+    private static boolean isSpreadsheet(EncryptedData data) {
+        String fileName = data.getFileName() == null ? "" : data.getFileName().toLowerCase(Locale.ROOT);
+        String mimeType = data.getMimeType() == null ? "" : data.getMimeType().toLowerCase(Locale.ROOT);
+        return fileName.endsWith(".xls")
+                || fileName.endsWith(".xlsx")
+                || fileName.endsWith(".csv")
+                || "text/csv".equals(mimeType)
+                || mimeType.contains("spreadsheet")
+                || mimeType.contains("excel");
+    }
+
+    private static SpreadsheetPreview previewSpreadsheet(EncryptedData data, byte[] plaintext) throws Exception {
+        String fileName = StringUtils.hasText(data.getFileName()) ? data.getFileName() : data.getDocId();
+        String mimeType = data.getMimeType() == null ? "" : data.getMimeType().toLowerCase(Locale.ROOT);
+        if (fileName.toLowerCase(Locale.ROOT).endsWith(".csv") || "text/csv".equals(mimeType)) {
+            return previewCsv(fileName, plaintext);
+        }
+
+        String suffix = fileName.contains(".") ? fileName.substring(fileName.lastIndexOf('.')) : ".xlsx";
+        Path tempFile = Files.createTempFile("se-spreadsheet-preview-", suffix);
+        try {
+            Files.write(tempFile, plaintext);
+            try (InputStream inputStream = Files.newInputStream(tempFile);
+                 Workbook workbook = WorkbookFactory.create(inputStream)) {
+                DataFormatter formatter = new DataFormatter();
+                FormulaEvaluator evaluator = workbook.getCreationHelper().createFormulaEvaluator();
+                List<SpreadsheetSheetPreview> sheetPreviews = new ArrayList<>();
+                int sheetLimit = Math.min(workbook.getNumberOfSheets(), SPREADSHEET_PREVIEW_MAX_SHEETS);
+
+                for (int sheetIndex = 0; sheetIndex < sheetLimit; sheetIndex++) {
+                    SpreadsheetSheetPreview sheetPreview = previewSheet(workbook.getSheetAt(sheetIndex), formatter, evaluator);
+                    if (!sheetPreview.rows().isEmpty()) {
+                        sheetPreviews.add(sheetPreview);
+                    }
+                }
+
+                boolean truncated = workbook.getNumberOfSheets() > sheetLimit
+                        || sheetPreviews.stream().anyMatch(SpreadsheetSheetPreview::truncated);
+                return new SpreadsheetPreview(sheetPreviews, truncated);
+            }
+        } finally {
+            Files.deleteIfExists(tempFile);
+        }
+    }
+
+    private static SpreadsheetSheetPreview previewSheet(Sheet sheet, DataFormatter formatter, FormulaEvaluator evaluator) {
+        List<List<String>> rows = new ArrayList<>();
+        int maxColumnCount = 0;
+        boolean truncated = false;
+
+        for (int rowIndex = sheet.getFirstRowNum(); rowIndex <= sheet.getLastRowNum(); rowIndex++) {
+            Row row = sheet.getRow(rowIndex);
+            if (row == null) {
+                continue;
+            }
+
+            short lastCellNum = row.getLastCellNum();
+            if (lastCellNum < 0) {
+                continue;
+            }
+
+            int columnLimit = Math.min(lastCellNum, SPREADSHEET_PREVIEW_MAX_COLUMNS);
+            List<String> cells = new ArrayList<>();
+            boolean hasValue = false;
+            for (int columnIndex = 0; columnIndex < columnLimit; columnIndex++) {
+                Cell cell = row.getCell(columnIndex);
+                String value = cell == null ? "" : formatter.formatCellValue(cell, evaluator);
+                if (StringUtils.hasText(value)) {
+                    hasValue = true;
+                }
+                cells.add(value);
+            }
+
+            if (!hasValue) {
+                continue;
+            }
+
+            maxColumnCount = Math.max(maxColumnCount, lastCellNum);
+            rows.add(cells);
+            if (lastCellNum > SPREADSHEET_PREVIEW_MAX_COLUMNS) {
+                truncated = true;
+            }
+            if (rows.size() >= SPREADSHEET_PREVIEW_MAX_ROWS) {
+                truncated = true;
+                break;
+            }
+        }
+
+        return new SpreadsheetSheetPreview(
+                sheet.getSheetName(),
+                rows,
+                sheet.getPhysicalNumberOfRows(),
+                Math.min(maxColumnCount, SPREADSHEET_PREVIEW_MAX_COLUMNS),
+                truncated
+        );
+    }
+
+    private static SpreadsheetPreview previewCsv(String fileName, byte[] plaintext) {
+        String text = new String(plaintext, StandardCharsets.UTF_8);
+        String[] lines = text.split("\\R", -1);
+        List<List<String>> rows = new ArrayList<>();
+        int maxColumnCount = 0;
+        boolean truncated = false;
+
+        for (String line : lines) {
+            if (!StringUtils.hasText(line)) {
+                continue;
+            }
+            List<String> parsed = parseCsvLine(line);
+            if (parsed.size() > SPREADSHEET_PREVIEW_MAX_COLUMNS) {
+                truncated = true;
+            }
+            List<String> row = parsed.subList(0, Math.min(parsed.size(), SPREADSHEET_PREVIEW_MAX_COLUMNS));
+            rows.add(new ArrayList<>(row));
+            maxColumnCount = Math.max(maxColumnCount, row.size());
+            if (rows.size() >= SPREADSHEET_PREVIEW_MAX_ROWS) {
+                truncated = true;
+                break;
+            }
+        }
+
+        SpreadsheetSheetPreview sheet = new SpreadsheetSheetPreview(fileName, rows, lines.length, maxColumnCount, truncated);
+        return new SpreadsheetPreview(rows.isEmpty() ? List.of() : List.of(sheet), truncated);
+    }
+
+    private static List<String> parseCsvLine(String line) {
+        List<String> cells = new ArrayList<>();
+        StringBuilder current = new StringBuilder();
+        boolean quoted = false;
+        for (int index = 0; index < line.length(); index++) {
+            char character = line.charAt(index);
+            if (character == '"') {
+                if (quoted && index + 1 < line.length() && line.charAt(index + 1) == '"') {
+                    current.append('"');
+                    index++;
+                } else {
+                    quoted = !quoted;
+                }
+            } else if (character == ',' && !quoted) {
+                cells.add(current.toString());
+                current.setLength(0);
+            } else {
+                current.append(character);
+            }
+        }
+        cells.add(current.toString());
+        return cells;
+    }
+
+    record UserSession(String username, ClientKeyManager.KeyBundle keys, ClientKeyManager.KeyBundle legacyKeys) {
     }
 }
-

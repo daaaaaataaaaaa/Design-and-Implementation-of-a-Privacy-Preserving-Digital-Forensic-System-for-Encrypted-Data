@@ -109,15 +109,22 @@ public final class KeywordExtractor {
         while (arrayMatcher.find()) {
             Matcher itemMatcher = JSON_STRING_ITEM_PATTERN.matcher(arrayMatcher.group(1));
             while (itemMatcher.find()) {
-                addKeyword(keywords, decodeJsonString(itemMatcher.group(1)));
+                addJsonKeywordValue(keywords, decodeJsonString(itemMatcher.group(1)));
             }
         }
 
         Matcher stringMatcher = JSON_KEYWORD_STRING_PATTERN.matcher(jsonText);
         while (stringMatcher.find()) {
-            keywords.addAll(extractCommaSeparated(decodeJsonString(stringMatcher.group(1))));
+            for (String rawKeyword : decodeJsonString(stringMatcher.group(1)).split(",")) {
+                addJsonKeywordValue(keywords, rawKeyword);
+            }
         }
         return new ArrayList<>(keywords);
+    }
+
+    private static void addJsonKeywordValue(Set<String> keywords, String rawKeyword) {
+        addKeyword(keywords, rawKeyword);
+        keywords.addAll(extractWords(rawKeyword));
     }
 
     /**

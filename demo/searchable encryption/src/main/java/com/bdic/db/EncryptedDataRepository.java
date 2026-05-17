@@ -147,6 +147,49 @@ public class EncryptedDataRepository {
         }
     }
 
+    public List<EncryptedData> searchByCiphertext(String username, byte[] queryCiphertext) {
+        String sql = """
+            SELECT DISTINCT
+                   d.doc_id AS storage_doc_id,
+                   COALESCE(d.display_doc_id, d.doc_id) AS display_doc_id,
+                   d.file_name,
+                   d.mime_type,
+                   d.media_type,
+                   d.file_size,
+                   d.created_at,
+                   d.encrypted_keyword_metadata
+            FROM documents d
+            JOIN keyword_index k ON d.doc_id = k.doc_id
+            WHERE d.owner_username = ?
+              AND k.peks_ciphertext = ?
+            ORDER BY d.created_at DESC, display_doc_id ASC
+            """;
+
+        List<EncryptedData> documents = new ArrayList<>();
+        try (Connection connection = databaseManager.getConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, username);
+            statement.setBytes(2, queryCiphertext);
+            try (ResultSet resultSet = statement.executeQuery()) {
+                while (resultSet.next()) {
+                    documents.add(new EncryptedData(
+                            resultSet.getString("display_doc_id"),
+                            resultSet.getString("file_name"),
+                            resultSet.getString("mime_type"),
+                            resultSet.getString("media_type"),
+                            resultSet.getLong("file_size"),
+                            resultSet.getBytes("encrypted_keyword_metadata"),
+                            null,
+                            List.of()
+                    ));
+                }
+            }
+        } catch (SQLException e) {
+            throw new RuntimeException("Failed to search encrypted documents", e);
+        }
+        return documents;
+    }
+
     /**
      * 获取当前用户的文档摘要列表，不返回密文正文。
      */
