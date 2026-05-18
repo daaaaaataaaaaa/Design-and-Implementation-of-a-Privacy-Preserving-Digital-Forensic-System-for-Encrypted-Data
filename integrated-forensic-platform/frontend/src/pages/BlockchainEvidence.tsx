@@ -30,12 +30,15 @@ export function BlockchainEvidence() {
     if (!ethereum) {
       throw new Error("No Ethereum provider detected. Start Ganache and connect MetaMask.");
     }
+    if (!ethers.isAddress(contractAddress.trim())) {
+      throw new Error("请先填写有效的 EvidenceRegistry 合约地址。");
+    }
     const provider = new ethers.BrowserProvider(ethereum);
     if (withSigner) {
       const signer = await provider.getSigner();
-      return new ethers.Contract(contractAddress, evidenceRegistryAbi, signer);
+      return new ethers.Contract(contractAddress.trim(), evidenceRegistryAbi, signer);
     }
-    return new ethers.Contract(contractAddress, evidenceRegistryAbi, provider);
+    return new ethers.Contract(contractAddress.trim(), evidenceRegistryAbi, provider);
   }
 
   async function connectWallet() {
@@ -44,8 +47,13 @@ export function BlockchainEvidence() {
       setStatus("未检测到 MetaMask 或浏览器钱包。");
       return;
     }
-    const accounts = (await ethereum.request({ method: "eth_requestAccounts" })) as string[];
-    setAccount(accounts[0] ?? "");
+    try {
+      const accounts = (await ethereum.request({ method: "eth_requestAccounts" })) as string[];
+      setAccount(accounts[0] ?? "");
+      setStatus(accounts[0] ? "钱包已连接。" : "未选择钱包账户。");
+    } catch (err) {
+      setStatus(err instanceof Error ? err.message : "连接钱包失败。");
+    }
   }
 
   async function handleFile(file?: File) {
@@ -59,13 +67,34 @@ export function BlockchainEvidence() {
     rememberEvidenceRegistryAddress(address);
   }
 
+  function validateEvidenceInput() {
+    if (!contractAddress.trim()) {
+      return "请先填写 EvidenceRegistry 合约地址。";
+    }
+    if (!ethers.isAddress(contractAddress.trim())) {
+      return "合约地址格式不正确，应为 0x 开头的以太坊地址。";
+    }
+    if (!hash.trim()) {
+      return "请先选择证据文件，或手动粘贴 64 位 SHA-256 哈希。";
+    }
+    if (!/^[a-fA-F0-9]{64}$/.test(hash.trim())) {
+      return "SHA-256 哈希必须是 64 位十六进制字符。";
+    }
+    return "";
+  }
+
   async function storeEvidence() {
     setStatus("");
+    const validationMessage = validateEvidenceInput();
+    if (validationMessage) {
+      setStatus(validationMessage);
+      return;
+    }
     try {
       const contract = await getContract(true);
       const tx = await contract.storeJSONEvidence(
         caseId,
-        hash,
+        hash.trim(),
         evidenceName,
         description,
         fileName,
@@ -83,9 +112,14 @@ export function BlockchainEvidence() {
 
   async function verifyEvidence() {
     setStatus("");
+    const validationMessage = validateEvidenceInput();
+    if (validationMessage) {
+      setStatus(validationMessage);
+      return;
+    }
     try {
       const contract = await getContract(false);
-      const exists = await contract.verifyEvidence(hash);
+      const exists = await contract.verifyEvidence(hash.trim());
       setStatus(exists ? "验证通过：该哈希已经存在于链上。" : "未找到该证据哈希。");
     } catch (err) {
       setStatus(err instanceof Error ? err.message : "Verification failed");
@@ -99,7 +133,7 @@ export function BlockchainEvidence() {
           <p className="eyebrow">EvidenceRegistry + ethers.js</p>
           <h1>链上存证</h1>
         </div>
-        <button className="primary-action" onClick={connectWallet}>
+        <button className="primary-action" type="button" onClick={connectWallet}>
           <Link size={17} /> {account ? `${account.slice(0, 6)}...${account.slice(-4)}` : "连接钱包"}
         </button>
       </div>
@@ -115,12 +149,12 @@ export function BlockchainEvidence() {
           <label>Evidence File</label>
           <input type="file" accept=".json,.txt,.csv" onChange={(event) => handleFile(event.target.files?.[0])} />
           <label>SHA-256 Hash</label>
-          <textarea value={hash} onChange={(event) => setHash(event.target.value.trim())} />
+          <textarea value={hash} onChange={(event) => setHash(event.target.value.trim())} placeholder="选择文件自动计算，或粘贴 64 位 SHA-256" />
           <div className="button-row">
-            <button className="primary-action" disabled={!contractAddress || hash.length !== 64} onClick={storeEvidence}>
+            <button className="primary-action" type="button" onClick={storeEvidence}>
               <Upload size={17} /> 提交存证
             </button>
-            <button className="secondary-action" disabled={!contractAddress || hash.length !== 64} onClick={verifyEvidence}>
+            <button className="secondary-action" type="button" onClick={verifyEvidence}>
               <SearchCheck size={17} /> 验证
             </button>
           </div>

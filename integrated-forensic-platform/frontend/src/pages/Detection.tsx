@@ -2,6 +2,7 @@ import { ethers } from "ethers";
 import { DatabaseZap, Play, RotateCcw, ShieldCheck } from "lucide-react";
 import { FormEvent, useMemo, useState } from "react";
 import { authHeader, DocumentSummary, jsonRequest, ML_API, PredictionResult, SE_API } from "../lib/api";
+import type { PageKey } from "../components/AppShell";
 import {
   evidenceRegistryAbi,
   getDefaultEvidenceRegistryAddress,
@@ -18,6 +19,10 @@ type EthereumWindow = Window & {
 };
 
 type PreservationStage = "idle" | "saving" | "notarizing" | "done" | "error";
+
+type DetectionProps = {
+  onNavigate: (page: PageKey) => void;
+};
 
 const sampleFeatures = {
   dur: 0.121,
@@ -37,7 +42,7 @@ const sampleFeatures = {
   service_dns: 0
 };
 
-export function Detection() {
+export function Detection({ onNavigate }: DetectionProps) {
   const [featuresText, setFeaturesText] = useState(JSON.stringify(sampleFeatures, null, 2));
   const [submittedFeatures, setSubmittedFeatures] = useState<Record<string, unknown> | null>(null);
   const [result, setResult] = useState<PredictionResult | null>(null);
@@ -130,6 +135,9 @@ export function Detection() {
     if (!contractAddress.trim()) {
       throw new Error("请先填写 EvidenceRegistry 合约地址。");
     }
+    if (!ethers.isAddress(contractAddress.trim())) {
+      throw new Error("EvidenceRegistry 合约地址格式不正确，应为 0x 开头的以太坊地址。");
+    }
     await ethereum.request({ method: "eth_requestAccounts" });
     const provider = new ethers.BrowserProvider(ethereum);
     const signer = await provider.getSigner();
@@ -174,7 +182,21 @@ export function Detection() {
   }
 
   async function preserveResult() {
-    if (!result || !submittedFeatures) return;
+    if (!result || !submittedFeatures) {
+      setPreservationStage("error");
+      setPreservationStatus("请先运行检测，生成证据哈希后再保存。");
+      return;
+    }
+    if (!contractAddress.trim()) {
+      setPreservationStage("error");
+      setPreservationStatus("请先填写 EvidenceRegistry 合约地址；只查看证据库可点击上方“加密证据库”。");
+      return;
+    }
+    if (!ethers.isAddress(contractAddress.trim())) {
+      setPreservationStage("error");
+      setPreservationStatus("EvidenceRegistry 合约地址格式不正确，应为 0x 开头的以太坊地址。");
+      return;
+    }
 
     setPreservationStage("saving");
     setPreservationStatus("正在写入加密证据库...");
@@ -225,7 +247,6 @@ export function Detection() {
   }
 
   const preserving = preservationStage === "saving" || preservationStage === "notarizing";
-  const canPreserve = Boolean(result && submittedFeatures && contractAddress.trim() && !preserving);
 
   return (
     <section className="page">
@@ -297,12 +318,20 @@ export function Detection() {
               )}
               <div className="preservation-flow">
                 <div className="pipeline-steps">
-                  <span className={vaultDocument ? "pipeline-step done" : preservationStage === "saving" ? "pipeline-step active" : "pipeline-step"}>
+                  <button
+                    className={vaultDocument ? "pipeline-step done" : preservationStage === "saving" ? "pipeline-step active" : "pipeline-step"}
+                    type="button"
+                    onClick={() => onNavigate("vault")}
+                  >
                     <DatabaseZap size={16} /> 加密证据库
-                  </span>
-                  <span className={preservationStage === "done" ? "pipeline-step done" : preservationStage === "notarizing" ? "pipeline-step active" : "pipeline-step"}>
+                  </button>
+                  <button
+                    className={preservationStage === "done" ? "pipeline-step done" : preservationStage === "notarizing" ? "pipeline-step active" : "pipeline-step"}
+                    type="button"
+                    onClick={() => onNavigate("blockchain")}
+                  >
                     <ShieldCheck size={16} /> 链上存证
-                  </span>
+                  </button>
                 </div>
                 <label>EvidenceRegistry 合约地址</label>
                 <input
@@ -311,7 +340,7 @@ export function Detection() {
                   placeholder="0x..."
                 />
                 <div className="button-row">
-                  <button className="primary-action" type="button" disabled={!canPreserve} onClick={preserveResult}>
+                  <button className="primary-action" type="button" disabled={preserving} onClick={preserveResult}>
                     <DatabaseZap size={17} /> {preserving ? "流程执行中" : "保存证据库并链上存证"}
                   </button>
                 </div>

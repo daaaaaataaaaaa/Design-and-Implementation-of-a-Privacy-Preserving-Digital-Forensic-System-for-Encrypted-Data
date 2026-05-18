@@ -2,16 +2,24 @@ import { ArrowRight, Blocks, LockKeyhole, Network, ShieldCheck } from "lucide-re
 import { useEffect, useState } from "react";
 import { jsonRequest, ML_API, MlMetadata } from "../lib/api";
 import type { PageKey } from "../components/AppShell";
+import type { ReactNode } from "react";
 
 type DashboardProps = {
   onNavigate: (page: PageKey) => void;
 };
 
-const steps = [
-  { icon: <Network size={19} />, title: "Detect", text: "Score network traffic and produce evidence records." },
-  { icon: <ShieldCheck size={19} />, title: "Explain", text: "Attach SHAP, LIME, permutation, and PDP context." },
-  { icon: <LockKeyhole size={19} />, title: "Encrypt", text: "Store evidence through searchable encryption." },
-  { icon: <Blocks size={19} />, title: "Notarize", text: "Commit SHA-256 fingerprints on chain." }
+type WorkflowStep = {
+  icon: ReactNode;
+  title: string;
+  text: string;
+  target: PageKey;
+};
+
+const steps: WorkflowStep[] = [
+  { icon: <Network size={19} />, title: "Detect", text: "Score network traffic and produce evidence records.", target: "detection" },
+  { icon: <ShieldCheck size={19} />, title: "Explain", text: "Attach SHAP, LIME, permutation, and PDP context.", target: "explainability" },
+  { icon: <LockKeyhole size={19} />, title: "Encrypt", text: "Store evidence through searchable encryption.", target: "vault" },
+  { icon: <Blocks size={19} />, title: "Notarize", text: "Commit SHA-256 fingerprints on chain.", target: "blockchain" }
 ];
 
 export function Dashboard({ onNavigate }: DashboardProps) {
@@ -61,14 +69,14 @@ export function Dashboard({ onNavigate }: DashboardProps) {
 
       <div className="workflow-band">
         {steps.map((step, index) => (
-          <article className="workflow-step" key={step.title}>
+          <button className="workflow-step" type="button" key={step.title} onClick={() => onNavigate(step.target)}>
             <div className="workflow-icon">{step.icon}</div>
             <div>
               <strong>{step.title}</strong>
               <p>{step.text}</p>
             </div>
             {index < steps.length - 1 && <ArrowRight className="step-arrow" size={18} />}
-          </article>
+          </button>
         ))}
       </div>
 
@@ -102,4 +110,3 @@ export function Dashboard({ onNavigate }: DashboardProps) {
     </section>
   );
 }
-

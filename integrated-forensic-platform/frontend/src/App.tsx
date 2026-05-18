@@ -12,11 +12,10 @@ export default function App() {
   return (
     <AppShell activePage={page} onPageChange={setPage}>
       {page === "dashboard" && <Dashboard onNavigate={setPage} />}
-      {page === "detection" && <Detection />}
+      {page === "detection" && <Detection onNavigate={setPage} />}
       {page === "explainability" && <Explainability />}
       {page === "vault" && <EncryptedVault />}
       {page === "blockchain" && <BlockchainEvidence />}
     </AppShell>
   );
 }
-

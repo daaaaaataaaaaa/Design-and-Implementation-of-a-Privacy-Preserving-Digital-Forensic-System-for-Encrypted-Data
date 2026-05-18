@@ -20,7 +20,9 @@ record DocumentDto(
         String createdAt,
         String plaintextPreview,
         String ciphertextBase64,
-        SpreadsheetPreview spreadsheetPreview
+        SpreadsheetPreview spreadsheetPreview,
+        int matchCount,
+        List<String> matchedKeywords
 ) {
 }
 

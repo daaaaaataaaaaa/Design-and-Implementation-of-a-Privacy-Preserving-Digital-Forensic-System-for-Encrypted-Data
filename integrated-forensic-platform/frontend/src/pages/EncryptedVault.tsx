@@ -157,20 +157,31 @@ function parseDownloadFileName(header: string | null, fallback: string) {
 }
 
 function countKeywordMatches(value: string, keyword: string) {
-  const normalizedKeyword = keyword.trim().toLowerCase();
-  if (!normalizedKeyword) return 0;
+  const terms = splitSearchTerms(keyword);
+  if (!terms.length) return 0;
   const lowerValue = value.toLowerCase();
-  let cursor = 0;
   let count = 0;
 
-  while (cursor < value.length) {
-    const matchIndex = lowerValue.indexOf(normalizedKeyword, cursor);
-    if (matchIndex < 0) break;
-    count++;
-    cursor = matchIndex + normalizedKeyword.length;
+  for (const term of terms) {
+    let cursor = 0;
+    while (cursor < value.length) {
+      const matchIndex = lowerValue.indexOf(term, cursor);
+      if (matchIndex < 0) break;
+      count++;
+      cursor = matchIndex + term.length;
+    }
   }
 
   return count;
+}
+
+function splitSearchTerms(value: string) {
+  return Array.from(new Set(value
+    .trim()
+    .toLowerCase()
+    .split(/[\s,;，；]+/)
+    .map((term) => term.trim())
+    .filter((term) => term.length >= 2)));
 }
 
 function highlightMatches(
@@ -178,25 +189,33 @@ function highlightMatches(
   keyword: string,
   options: { activeIndex?: number; startIndex?: number; trackMatches?: boolean } = {}
 ): ReactNode {
-  const normalizedKeyword = keyword.trim();
-  if (!normalizedKeyword) return value;
+  const terms = splitSearchTerms(keyword).sort((left, right) => right.length - left.length);
+  if (!terms.length) return value;
 
   const lowerValue = value.toLowerCase();
-  const lowerKeyword = normalizedKeyword.toLowerCase();
   const parts: ReactNode[] = [];
   let cursor = 0;
   let localMatchIndex = 0;
 
   while (cursor < value.length) {
-    const matchIndex = lowerValue.indexOf(lowerKeyword, cursor);
-    if (matchIndex < 0) {
+    let matchIndex = -1;
+    let matchedTerm = "";
+    for (const term of terms) {
+      const nextIndex = lowerValue.indexOf(term, cursor);
+      if (nextIndex >= 0 && (matchIndex < 0 || nextIndex < matchIndex || (nextIndex === matchIndex && term.length > matchedTerm.length))) {
+        matchIndex = nextIndex;
+        matchedTerm = term;
+      }
+    }
+
+    if (matchIndex < 0 || !matchedTerm) {
       parts.push(value.slice(cursor));
       break;
     }
     if (matchIndex > cursor) {
       parts.push(value.slice(cursor, matchIndex));
     }
-    const matchText = value.slice(matchIndex, matchIndex + normalizedKeyword.length);
+    const matchText = value.slice(matchIndex, matchIndex + matchedTerm.length);
     const globalMatchIndex = (options.startIndex ?? 0) + localMatchIndex;
     const active = options.activeIndex === globalMatchIndex;
     parts.push(
@@ -208,7 +227,7 @@ function highlightMatches(
         {matchText}
       </mark>
     );
-    cursor = matchIndex + normalizedKeyword.length;
+    cursor = matchIndex + matchedTerm.length;
     localMatchIndex++;
   }
 
@@ -587,11 +606,12 @@ export function EncryptedVault() {
 
   async function searchDocuments() {
     if (!requireLogin("searching documents")) return;
-    const normalizedKeyword = keyword.trim().toLowerCase();
-    if (!normalizedKeyword) {
+    const searchTerms = splitSearchTerms(keyword);
+    if (!searchTerms.length) {
       showMessage("Please enter a keyword.", "danger");
       return;
     }
+    const normalizedKeyword = searchTerms.join(" ");
 
     setPendingAction("search");
     showMessage(`Searching for "${normalizedKeyword}"...`, "info");
@@ -605,14 +625,33 @@ export function EncryptedVault() {
       });
       setDocuments(latestDocuments);
 
-      const fallbackMatches = latestDocuments.filter((document) => {
-        return document.docId.toLowerCase().includes(normalizedKeyword)
-          || document.fileName.toLowerCase().includes(normalizedKeyword);
-      });
       const merged = new Map<string, DocumentSummary>();
-      for (const document of encryptedMatches) merged.set(document.docId, document);
-      for (const document of fallbackMatches) merged.set(document.docId, document);
-      const results = Array.from(merged.values());
+      for (const document of encryptedMatches) {
+        merged.set(document.docId, {
+          ...document,
+          matchCount: document.matchCount ?? document.matchedKeywords?.length ?? 0,
+          matchedKeywords: document.matchedKeywords ?? []
+        });
+      }
+      for (const document of latestDocuments) {
+        const matchedKeywords = searchTerms.filter((term) => {
+          return document.docId.toLowerCase().includes(term)
+            || document.fileName.toLowerCase().includes(term);
+        });
+        if (!matchedKeywords.length) continue;
+
+        const existing = merged.get(document.docId);
+        const combinedKeywords = Array.from(new Set([...(existing?.matchedKeywords ?? []), ...matchedKeywords]));
+        merged.set(document.docId, {
+          ...(existing ?? document),
+          matchCount: Math.max(existing?.matchCount ?? 0, combinedKeywords.length),
+          matchedKeywords: combinedKeywords
+        });
+      }
+      const results = Array.from(merged.values()).sort((left, right) => {
+        return (right.matchCount ?? 0) - (left.matchCount ?? 0)
+          || left.docId.localeCompare(right.docId);
+      });
       setSearchResults(results);
       setHasSearched(true);
       setLastSearchKeyword(normalizedKeyword);
@@ -1085,6 +1124,9 @@ export function EncryptedVault() {
                     <span>File: {highlightMatches(document.fileName, activeHighlightKeyword)}</span>
                     <span>Type: {document.mediaType}</span>
                     <span>Size: {formatBytes(document.fileSize)}</span>
+                    {document.matchCount ? (
+                      <span>Matched: {document.matchCount} keyword(s){document.matchedKeywords?.length ? ` (${document.matchedKeywords.join(", ")})` : ""}</span>
+                    ) : null}
                           <button className="se-link-button" type="button" onClick={() => openDocument(document.docId)}>
                             Open Preview
                           </button>

@@ -234,6 +234,12 @@ button:disabled {
   font-size: 17px;
 }
 
+.panel-subtitle {
+  color: var(--muted);
+  font-size: 12px;
+  margin: 4px 0 0;
+}
+
 .workflow-band {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -242,6 +248,7 @@ button:disabled {
 
 .workflow-step {
   position: relative;
+  width: 100%;
   display: grid;
   grid-template-columns: 40px 1fr;
   gap: 12px;
@@ -249,6 +256,14 @@ button:disabled {
   border: 1px solid #cfe0dd;
   border-radius: 8px;
   padding: 14px;
+  color: inherit;
+  text-align: left;
+}
+
+.workflow-step:hover,
+.workflow-step:focus-visible {
+  border-color: #8db5ad;
+  background: #dfedeb;
 }
 
 .workflow-step p {
@@ -295,6 +310,10 @@ button:disabled {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 16px;
+}
+
+.asset-grid-empty {
+  grid-column: 1 / -1;
 }
 
 .asset-preview,
@@ -488,6 +507,13 @@ code {
   background: #f7f9fc;
 }
 
+.pipeline-step:hover,
+.pipeline-step:focus-visible {
+  color: #17355f;
+  border-color: #b7c6d8;
+  background: #eef3f8;
+}
+
 .pipeline-step.active {
   color: #17355f;
   border-color: #98b7d8;
@@ -531,8 +557,36 @@ code {
   box-shadow: 0 1px 3px rgba(15, 23, 42, 0.12);
 }
 
+.report-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.report-pager {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: #40516a;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
 .table-wrap {
   overflow-x: auto;
+}
+
+.report-table-wrap {
+  max-height: 560px;
+  overflow: auto;
+}
+
+.report-table-wrap thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
 }
 
 table {

@@ -37,6 +37,8 @@ export type DocumentSummary = {
   fileSize: number;
   keywordCount: number;
   createdAt?: string;
+  matchCount?: number;
+  matchedKeywords?: string[];
 };
 
 export type SpreadsheetPreview = {
