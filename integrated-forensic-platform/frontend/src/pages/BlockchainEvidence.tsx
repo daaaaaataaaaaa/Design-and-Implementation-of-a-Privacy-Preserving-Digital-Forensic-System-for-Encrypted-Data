@@ -14,7 +14,7 @@ type EthereumWindow = Window & {
 
 export function BlockchainEvidence() {
   const [account, setAccount] = useState("");
-  const [contractAddress, setContractAddress] = useState(getDefaultEvidenceRegistryAddress);
+  const [contractAddress, setContractAddress] = useState("0x合约地址-硬编码 演示的时候记得改这里");
   const [caseId, setCaseId] = useState("CASE-001");
   const [evidenceName, setEvidenceName] = useState("Forensic Evidence Report");
   const [fileName, setFileName] = useState("evidence.json");
