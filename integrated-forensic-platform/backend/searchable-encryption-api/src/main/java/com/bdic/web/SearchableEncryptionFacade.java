@@ -30,6 +30,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Base64;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -44,6 +47,7 @@ public class SearchableEncryptionFacade {
     private static final int SPREADSHEET_PREVIEW_MAX_SHEETS = 3;
     private static final int SPREADSHEET_PREVIEW_MAX_ROWS = 40;
     private static final int SPREADSHEET_PREVIEW_MAX_COLUMNS = 12;
+    private static final String RECOVERY_CODE = getValue("se.auth.recovery-code", "SE_AUTH_RECOVERY_CODE", "12345");
 
     private final EncryptedDataRepository repository;
     private final UserRepository userRepository;
@@ -79,6 +83,33 @@ public class SearchableEncryptionFacade {
         return createSession(request.username());
     }
 
+    AuthResponse changePassword(UserSession session, ChangePasswordRequest request) {
+        if (!StringUtils.hasText(request.newPassword())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "New password is required.");
+        }
+        if (!userRepository.authenticate(session.username(), request.currentPassword())) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Current password is incorrect.");
+        }
+        userRepository.updatePassword(session.username(), request.newPassword());
+        sessions.entrySet().removeIf(entry -> entry.getValue().username().equals(session.username()));
+        return createSession(session.username());
+    }
+
+    AuthResponse resetPassword(ResetPasswordRequest request) {
+        if (!StringUtils.hasText(request.newPassword())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "New password is required.");
+        }
+        if (!RECOVERY_CODE.equals(request.recoveryCode())) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Recovery code is invalid.");
+        }
+        if (!userRepository.exists(request.username())) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Account not found.");
+        }
+        userRepository.updatePassword(request.username(), request.newPassword());
+        sessions.entrySet().removeIf(entry -> entry.getValue().username().equals(request.username()));
+        return createSession(request.username());
+    }
+
     List<DocumentDto> listDocuments(UserSession session) {
         return repository.listDocuments(session.username()).stream()
                 .map(SearchableEncryptionFacade::fromSummary)
@@ -106,9 +137,29 @@ public class SearchableEncryptionFacade {
         if (!StringUtils.hasText(keyword)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "keyword is required.");
         }
-        byte[] queryCiphertext = PEKSUtil.encrypt(session.keys().peksPublicKey(), keyword);
-        return repository.searchByCiphertext(session.username(), queryCiphertext).stream()
-                .map(data -> fromEncryptedData(data, null, null))
+        List<String> queryTokens = splitSearchKeywords(keyword);
+        if (queryTokens.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "keyword is required.");
+        }
+
+        Map<String, SearchMatch> matches = new LinkedHashMap<>();
+        int rank = 0;
+        for (String queryToken : queryTokens) {
+            int firstRank = rank;
+            byte[] queryCiphertext = PEKSUtil.encrypt(session.keys().peksPublicKey(), queryToken);
+            for (EncryptedData data : repository.searchByCiphertext(session.username(), queryCiphertext)) {
+                SearchMatch match = matches.computeIfAbsent(data.getDocId(), ignored -> new SearchMatch(data, firstRank, new LinkedHashSet<>()));
+                match.matchedKeywords().add(queryToken);
+            }
+            rank++;
+        }
+
+        return matches.values().stream()
+                .sorted(Comparator
+                        .comparingInt((SearchMatch match) -> match.matchedKeywords().size()).reversed()
+                        .thenComparingInt(SearchMatch::firstRank)
+                        .thenComparing(match -> match.data().getDocId(), String.CASE_INSENSITIVE_ORDER))
+                .map(match -> fromEncryptedData(match.data(), null, null, null, match.matchedKeywords().size(), new ArrayList<>(match.matchedKeywords())))
                 .toList();
     }
 
@@ -234,12 +285,14 @@ public class SearchableEncryptionFacade {
                 summary.getCreatedAt() == null ? null : summary.getCreatedAt().toString(),
                 null,
                 null,
-                null
+                null,
+                0,
+                List.of()
         );
     }
 
     private static DocumentDto fromEncryptedData(EncryptedData data, String plaintextPreview, String ciphertextBase64) {
-        return fromEncryptedData(data, plaintextPreview, ciphertextBase64, null);
+        return fromEncryptedData(data, plaintextPreview, ciphertextBase64, null, 0, List.of());
     }
 
     private static DocumentDto fromEncryptedData(
@@ -247,6 +300,17 @@ public class SearchableEncryptionFacade {
             String plaintextPreview,
             String ciphertextBase64,
             SpreadsheetPreview spreadsheetPreview
+    ) {
+        return fromEncryptedData(data, plaintextPreview, ciphertextBase64, spreadsheetPreview, 0, List.of());
+    }
+
+    private static DocumentDto fromEncryptedData(
+            EncryptedData data,
+            String plaintextPreview,
+            String ciphertextBase64,
+            SpreadsheetPreview spreadsheetPreview,
+            int matchCount,
+            List<String> matchedKeywords
     ) {
         int keywordCount = data.getPeksCiphertexts() == null ? 0 : data.getPeksCiphertexts().size();
         return new DocumentDto(
@@ -259,8 +323,21 @@ public class SearchableEncryptionFacade {
                 null,
                 plaintextPreview,
                 ciphertextBase64,
-                spreadsheetPreview
+                spreadsheetPreview,
+                matchCount,
+                matchedKeywords
         );
+    }
+
+    private static List<String> splitSearchKeywords(String keyword) {
+        LinkedHashSet<String> tokens = new LinkedHashSet<>();
+        for (String rawToken : keyword.split("[\\s,;，；]+")) {
+            String token = rawToken.trim().toLowerCase(Locale.ROOT);
+            if (token.length() >= 2) {
+                tokens.add(token);
+            }
+        }
+        return new ArrayList<>(tokens);
     }
 
     private static String stripBearer(String authorizationHeader) {
@@ -271,6 +348,18 @@ public class SearchableEncryptionFacade {
             return authorizationHeader.substring("Bearer ".length()).trim();
         }
         return authorizationHeader.trim();
+    }
+
+    private static String getValue(String propertyKey, String envKey, String defaultValue) {
+        String propertyValue = System.getProperty(propertyKey);
+        if (StringUtils.hasText(propertyValue)) {
+            return propertyValue;
+        }
+        String envValue = System.getenv(envKey);
+        if (StringUtils.hasText(envValue)) {
+            return envValue;
+        }
+        return defaultValue;
     }
 
     private static String truncate(String value, int limit) {
@@ -487,5 +576,8 @@ public class SearchableEncryptionFacade {
     }
 
     record UserSession(String username, ClientKeyManager.KeyBundle keys, ClientKeyManager.KeyBundle legacyKeys) {
+    }
+
+    private record SearchMatch(EncryptedData data, int firstRank, LinkedHashSet<String> matchedKeywords) {
     }
 }

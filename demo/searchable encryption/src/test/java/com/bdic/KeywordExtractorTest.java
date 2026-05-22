@@ -7,12 +7,12 @@ import java.util.Arrays;
 import java.util.List;
 
 /**
- * 关键词抽取工具测试。
+ * Keyword extractor tests.
  */
 public class KeywordExtractorTest extends TestCase {
 
     /**
-     * 验证英文自然文本按词抽取且保持原始顺序。
+     * Verifies that English natural text is extracted by word while preserving original order.
      */
     public void testExtractWordsFromEnglishText() {
         List<String> keywords = KeywordExtractor.extractWords("searchable encryption protects data privacy");
@@ -21,7 +21,7 @@ public class KeywordExtractorTest extends TestCase {
     }
 
     /**
-     * 验证逗号分隔关键词会统一小写、去空白、去重，并过滤一字词。
+     * Verifies that comma-separated keywords are lowercased, trimmed, deduplicated, and one-character terms are filtered.
      */
     public void testCommaSeparatedKeywordsAreNormalizedAndDeduplicated() {
         List<String> keywords = KeywordExtractor.extractCommaSeparated(" Alpha, beta , ALPHA,, a ");
@@ -30,7 +30,7 @@ public class KeywordExtractorTest extends TestCase {
     }
 
     /**
-     * 验证中日韩文本会额外生成相邻双字片段，支持局部词搜索。
+     * Verifies that CJK text additionally generates adjacent two-character fragments for partial-term search.
      */
     public void testExtractWordsAddsCjkBigrams() {
         List<String> keywords = KeywordExtractor.extractWords("\u53ef\u641c\u7d22\u52a0\u5bc6");
@@ -41,7 +41,7 @@ public class KeywordExtractorTest extends TestCase {
     }
 
     /**
-     * 验证可从 JSON 的 Searchable_Keywords 数组中提取完整关键词值。
+     * Verifies that full keyword values can be extracted from a JSON Searchable_Keywords array.
      */
     public void testExtractJsonKeywordFieldsFromArrayValues() {
         String json = "[{\"Searchable_Keywords\":[\"PROTOCOL:udp\",\"SERVICE:-\",\"STATE:INT\"]}]";
@@ -54,7 +54,7 @@ public class KeywordExtractorTest extends TestCase {
     }
 
     /**
-     * 验证 JSON 的 keyword 字符串支持逗号分隔并自动规范化。
+     * Verifies that a JSON keyword string supports comma separation and automatic normalization.
      */
     public void testExtractJsonKeywordFieldsFromStringValue() {
         String json = "{\"keyword\":\" Alert , Malware,alert \"}";

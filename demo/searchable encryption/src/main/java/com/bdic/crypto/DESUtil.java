@@ -7,23 +7,23 @@ import javax.crypto.spec.SecretKeySpec;
 import java.security.NoSuchAlgorithmException;
 
 /**
- * DES 对称加密工具类。
+ * DES symmetric encryption utility.
  *
- * <p>本项目使用它加密文档正文和关键词元数据。DES 主要用于课程/演示场景，
- * 如果用于真实生产系统，建议替换为 AES-GCM 等现代认证加密算法。</p>
+ * <p>This project uses it to encrypt document content and keyword metadata. DES is mainly for coursework/demo scenarios;
+ * for real production systems, replace it with a modern authenticated encryption algorithm such as AES-GCM.</p>
  */
 public class DESUtil {
 
-    /** JCE 中 DES 算法的标准名称。 */
+    /** Standard DES algorithm name in JCE. */
     private static final String ALGORITHM = "DES";
 
     /**
-     * 生成新的 DES 密钥。
+     * Generates a new DES key.
      */
     public static SecretKey generateKey() {
         try {
             KeyGenerator keyGen = KeyGenerator.getInstance(ALGORITHM);
-            // DES 的有效密钥长度固定为 56 位。
+            // DES has a fixed effective key length of 56 bits.
             keyGen.init(56);
             return keyGen.generateKey();
         } catch (NoSuchAlgorithmException e) {
@@ -32,28 +32,28 @@ public class DESUtil {
     }
 
     /**
-     * 根据持久化的原始字节恢复 DES 密钥。
+     * Restores a DES key from persisted raw bytes.
      */
     public static SecretKey getKeyFromBytes(byte[] keyBytes) {
-        // SecretKeySpec 不重新派生密钥，只把已保存的原始字节包装成 JCE 可用的密钥对象。
+        // SecretKeySpec does not rederive the key; it wraps saved raw bytes as a JCE key object.
         return new SecretKeySpec(keyBytes, ALGORITHM);
     }
 
     /**
-     * 使用指定密钥加密明文字节。
+     * Encrypts plaintext bytes with the specified key.
      */
     public static byte[] encrypt(byte[] plaintext, SecretKey key) throws Exception {
-        // 使用 JCE Cipher 完成一次性块加密，调用方负责传入完整明文字节。
+        // Use JCE Cipher for one-shot block encryption; callers provide the complete plaintext bytes.
         Cipher cipher = Cipher.getInstance(ALGORITHM);
         cipher.init(Cipher.ENCRYPT_MODE, key);
         return cipher.doFinal(plaintext);
     }
 
     /**
-     * 使用指定密钥解密密文字节。
+     * Decrypts ciphertext bytes with the specified key.
      */
     public static byte[] decrypt(byte[] ciphertext, SecretKey key) throws Exception {
-        // 解密流程与加密流程对称，输出会恢复为上传前的原始字节。
+        // The decryption flow mirrors encryption and restores the original bytes before upload.
         Cipher cipher = Cipher.getInstance(ALGORITHM);
         cipher.init(Cipher.DECRYPT_MODE, key);
         return cipher.doFinal(ciphertext);

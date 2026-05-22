@@ -7,17 +7,17 @@ import java.util.HashSet;
 import java.util.Set;
 
 /**
- * 文档 ID 生成器测试。
+ * Document ID generator tests.
  */
 public class DocumentIdGeneratorTest extends TestCase {
 
     /**
-     * 验证生成的 ID 格式正确，并在样本范围内不重复。
+     * Verifies that generated IDs have the correct format and do not repeat within the sample range.
      */
     public void testGeneratedDocumentIdFormatAndUniqueness() {
         Set<String> generatedIds = new HashSet<>();
 
-        // 生成 1000 个样本，检查 doc- 前缀和 32 位小写十六进制随机部分。
+        // Generate 1000 samples and check the doc- prefix plus the 32-character lowercase hexadecimal random part.
         for (int i = 0; i < 1000; i++) {
             String docId = DocumentIdGenerator.generate();
 

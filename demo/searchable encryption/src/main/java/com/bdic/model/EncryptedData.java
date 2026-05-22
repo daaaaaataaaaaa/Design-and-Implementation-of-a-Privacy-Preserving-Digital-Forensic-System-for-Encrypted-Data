@@ -4,52 +4,52 @@ import java.io.Serializable;
 import java.util.List;
 
 /**
- * 加密文档实体。
+ * Encrypted document entity.
  *
- * <p>客户端上传时会填充文档元数据、DES 加密后的正文、加密后的关键词元数据，
- * 以及用于服务端搜索的关键词密文集合。</p>
+ * <p>During client upload, this object contains document metadata, DES-encrypted content, encrypted keyword metadata,
+ * and keyword ciphertexts used for server-side search.</p>
  */
 public class EncryptedData implements Serializable {
-    /** Java 序列化版本号，保证客户端和服务端通过对象流传输时结构兼容。 */
+    /** Java serialization version to keep client/server object-stream transfer compatible. */
     private static final long serialVersionUID = 1L;
 
-    /** 用户可见的文档编号；服务端保存时会转换为内部存储 ID。 */
+    /** User-visible document ID; converted to an internal storage ID when saved by the server. */
     private String docId;
-    /** 原始文件名，用于列表展示和下载时恢复文件名。 */
+    /** Original file name, used for list display and restoring the file name on download. */
     private String fileName;
-    /** 文件 MIME 类型，辅助界面判断预览方式。 */
+    /** File MIME type, used by the UI to choose a preview method. */
     private String mimeType;
-    /** 简化后的媒体分类，例如 text、image、video、document、binary。 */
+    /** Simplified media category, such as text, image, video, document, or binary. */
     private String mediaType;
-    /** 原始文件大小，单位为字节。 */
+    /** Original file size in bytes. */
     private long fileSize;
-    /** 用 DES 加密后的关键词元数据，包含关键词和可选描述信息。 */
+    /** Keyword metadata encrypted with DES, containing keywords and the optional description. */
     private byte[] encryptedKeywordMetadata;
-    /** 用 DES 加密后的文档正文或二进制内容。 */
+    /** Document body or binary content encrypted with DES. */
     private byte[] encryptedContent;
-    /** 用 PEKS 公钥生成的可搜索关键词密文集合。 */
+    /** Searchable keyword ciphertext set generated with the PEKS public key. */
     private List<byte[]> peksCiphertexts;
 
     /**
-     * 兼容旧版测试和纯文本上传的简化构造器。
+     * Simplified constructor for compatibility with older tests and plaintext uploads.
      *
-     * <p>未显式传入的文件元数据会按文本文件默认值填充。</p>
+     * <p>File metadata not explicitly passed in is filled with default text-file values.</p>
      */
     public EncryptedData(String docId, byte[] encryptedContent, List<byte[]> peksCiphertexts) {
         this(docId, docId + ".txt", "text/plain", "text", encryptedContent == null ? 0 : encryptedContent.length, null, encryptedContent, peksCiphertexts);
     }
 
     /**
-     * 构造完整的加密文档实体。
+     * Constructs a complete encrypted document entity.
      *
-     * @param docId 用户可见文档编号。
-     * @param fileName 原始文件名。
-     * @param mimeType 文件 MIME 类型。
-     * @param mediaType 简化媒体分类。
-     * @param fileSize 原始文件大小。
-     * @param encryptedKeywordMetadata 加密后的关键词元数据。
-     * @param encryptedContent 加密后的正文或二进制内容。
-     * @param peksCiphertexts 关键词密文索引集合。
+     * @param docId user-visible document ID.
+     * @param fileName original file name.
+     * @param mimeType file MIME type.
+     * @param mediaType simplified media category.
+     * @param fileSize original file size.
+     * @param encryptedKeywordMetadata encrypted keyword metadata.
+     * @param encryptedContent encrypted body or binary content.
+     * @param peksCiphertexts keyword ciphertext index set.
      */
     public EncryptedData(String docId, String fileName, String mimeType, String mediaType, long fileSize, byte[] encryptedKeywordMetadata, byte[] encryptedContent, List<byte[]> peksCiphertexts) {
         this.docId = docId;
@@ -62,82 +62,82 @@ public class EncryptedData implements Serializable {
         this.peksCiphertexts = peksCiphertexts;
     }
 
-    /** 返回用户可见文档编号。 */
+    /** Returns the user-visible document ID. */
     public String getDocId() {
         return docId;
     }
 
-    /** 设置用户可见文档编号。 */
+    /** Sets the user-visible document ID. */
     public void setDocId(String docId) {
         this.docId = docId;
     }
 
-    /** 返回 DES 加密后的文档内容。 */
+    /** Returns document content encrypted with DES. */
     public byte[] getEncryptedContent() {
         return encryptedContent;
     }
 
-    /** 设置 DES 加密后的文档内容。 */
+    /** Sets document content encrypted with DES. */
     public void setEncryptedContent(byte[] encryptedContent) {
         this.encryptedContent = encryptedContent;
     }
 
-    /** 返回原始文件名。 */
+    /** Returns the original file name. */
     public String getFileName() {
         return fileName;
     }
 
-    /** 设置原始文件名。 */
+    /** Sets the original file name. */
     public void setFileName(String fileName) {
         this.fileName = fileName;
     }
 
-    /** 返回文件 MIME 类型。 */
+    /** Returns the file MIME type. */
     public String getMimeType() {
         return mimeType;
     }
 
-    /** 设置文件 MIME 类型。 */
+    /** Sets the file MIME type. */
     public void setMimeType(String mimeType) {
         this.mimeType = mimeType;
     }
 
-    /** 返回简化媒体分类。 */
+    /** Returns the simplified media category. */
     public String getMediaType() {
         return mediaType;
     }
 
-    /** 设置简化媒体分类。 */
+    /** Sets the simplified media category. */
     public void setMediaType(String mediaType) {
         this.mediaType = mediaType;
     }
 
-    /** 返回原始文件大小，单位为字节。 */
+    /** Returns the original file size in bytes. */
     public long getFileSize() {
         return fileSize;
     }
 
-    /** 设置原始文件大小，单位为字节。 */
+    /** Sets the original file size in bytes. */
     public void setFileSize(long fileSize) {
         this.fileSize = fileSize;
     }
 
-    /** 返回加密后的关键词元数据。 */
+    /** Returns encrypted keyword metadata. */
     public byte[] getEncryptedKeywordMetadata() {
         return encryptedKeywordMetadata;
     }
 
-    /** 设置加密后的关键词元数据。 */
+    /** Sets encrypted keyword metadata. */
     public void setEncryptedKeywordMetadata(byte[] encryptedKeywordMetadata) {
         this.encryptedKeywordMetadata = encryptedKeywordMetadata;
     }
 
-    /** 返回可搜索关键词密文集合。 */
+    /** Returns the searchable keyword ciphertext set. */
     public List<byte[]> getPeksCiphertexts() {
         return peksCiphertexts;
     }
 
-    /** 设置可搜索关键词密文集合，常用于重建索引后覆盖旧集合。 */
+    /** Sets the searchable keyword ciphertext set, often used to replace the old set after index rebuild. */
     public void setPeksCiphertexts(List<byte[]> peksCiphertexts) {
         this.peksCiphertexts = peksCiphertexts;
     }

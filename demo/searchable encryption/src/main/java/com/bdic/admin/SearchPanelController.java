@@ -38,49 +38,49 @@ import java.util.Locale;
 import java.util.Map;
 
 /**
- * 搜索页控制器：负责关键词搜索 UI 与异步搜索流程。
+ * Search page controller for the keyword-search UI and asynchronous search workflow.
  */
 public class SearchPanelController {
-    /** 搜索结果中图片缩略图最大宽度。 */
+    /** Maximum image thumbnail width in search results. */
     private static final int PREVIEW_THUMB_MAX_WIDTH = 180;
-    /** 搜索结果中图片缩略图最大高度。 */
+    /** Maximum image thumbnail height in search results. */
     private static final int PREVIEW_THUMB_MAX_HEIGHT = 130;
-    /** PDF 预览最多渲染页数，避免超大文件一次性占满内存。 */
+    /** Maximum number of PDF preview pages to render to avoid exhausting memory on very large files. */
     private static final int MAX_PDF_PREVIEW_PAGES = 20;
-    /** Excel 预览每个 sheet 最多展示行数。 */
+    /** Maximum number of rows shown per sheet in Excel previews. */
     private static final int MAX_SPREADSHEET_PREVIEW_ROWS = 200;
-    /** Excel 预览每个 sheet 最多展示列数。 */
+    /** Maximum number of columns shown per sheet in Excel previews. */
     private static final int MAX_SPREADSHEET_PREVIEW_COLUMNS = 50;
 
 
-    /** 主窗口，用于弹窗定位。 */
+    /** Main window used for dialog positioning. */
     private final JFrame owner;
-    /** 与服务端通信的客户端。 */
+    /** Client used to communicate with the server. */
     private final DocumentServiceClient serviceClient;
-    /** 本地解密和文件类型判断服务。 */
+    /** Service for local decryption and file-type detection. */
     private final DocumentOperationService operationService;
-    /** 当前用户本地密钥。 */
+    /** Local keys for the current user. */
     private final ClientKeyManager.KeyBundle keyBundle;
-    /** 全局忙碌状态管理器。 */
+    /** Global busy-state manager. */
     private UiBusyStateManager busyStateManager;
 
-    /** 搜索关键词输入框。 */
+    /** Search keyword input field. */
     private JTextField searchField;
-    /** 搜索结果卡片容器。 */
+    /** Container for search result cards. */
     private JPanel resultListPanel;
-    /** 触发搜索按钮。 */
+    /** Button that triggers search. */
     private JButton searchButton;
-    /** 结果滚动区域。 */
+    /** Scroll area for results. */
     private JScrollPane imagePreviewScrollPane;
-    /** 搜索页状态文本。 */
+    /** Search page status text. */
     private JLabel searchStatusLabel;
-    /** 搜索页进度条。 */
+    /** Search page progress bar. */
     private JProgressBar searchProgressBar;
-    /** 当前搜索结果中已经在后台解密和缩放好的图片预览。 */
+    /** Image previews from the current search results that were decrypted and scaled in the background. */
     private final Map<String, ImagePreview> imagePreviewCache = new HashMap<>();
 
     /**
-     * 创建搜索页控制器。
+     * Creates the search page controller.
      */
     public SearchPanelController(
             JFrame owner,
@@ -95,13 +95,13 @@ public class SearchPanelController {
     }
 
     /**
-     * 创建搜索页完整 UI。
+     * Creates the full search page UI.
      */
     public JPanel createPanel() {
         JPanel searchPanel = new JPanel(new BorderLayout(10, 10));
         searchPanel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
 
-        // 顶部搜索栏支持按钮搜索，也支持在输入框中按回车搜索。
+        // The top search bar supports both button search and pressing Enter in the input field.
         JPanel searchFormPanel = new JPanel(new BorderLayout(8, 8));
         searchFormPanel.setBorder(BorderFactory.createEmptyBorder(12, 12, 12, 12));
         searchFormPanel.add(new JLabel("Search Keyword"), BorderLayout.WEST);
@@ -115,7 +115,7 @@ public class SearchPanelController {
         searchFormPanel.add(searchButton, BorderLayout.EAST);
         searchPanel.add(UiComponentFactory.createSectionPanel("Keyword Search", "Search by keyword prefix, file name, or extracted document text.", searchFormPanel), BorderLayout.NORTH);
 
-        // 中间结果区按纵向卡片展示，每个卡片可能包含图片缩略图或文本预览。
+        // The center result area shows vertical cards, each of which may include an image thumbnail or text preview.
         resultListPanel = new JPanel();
         resultListPanel.setLayout(new BoxLayout(resultListPanel, BoxLayout.Y_AXIS));
         resultListPanel.setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
@@ -142,22 +142,22 @@ public class SearchPanelController {
         return searchPanel;
     }
 
-    /** 注入忙碌状态管理器。 */
+    /** Injects the busy-state manager. */
     public void setBusyStateManager(UiBusyStateManager busyStateManager) {
         this.busyStateManager = busyStateManager;
     }
 
-    /** 返回搜索页状态标签。 */
+    /** Returns the search page status label. */
     public JLabel getStatusLabel() {
         return searchStatusLabel;
     }
 
-    /** 返回搜索页进度条。 */
+    /** Returns the search page progress bar. */
     public JProgressBar getProgressBar() {
         return searchProgressBar;
     }
 
-    /** 返回后台搜索期间需要禁用的控件。 */
+    /** Returns controls that must be disabled during background search. */
     public List<JComponent> getBusySensitiveComponents() {
         List<JComponent> components = new ArrayList<>();
         components.add(searchButton);
@@ -166,7 +166,7 @@ public class SearchPanelController {
     }
 
     /**
-     * 响应搜索动作：生成陷门、调用服务端搜索，并在完成后渲染结果。
+     * Handles search actions: generates a trapdoor, calls server search, and renders results when complete.
      */
     private void handleSearch() {
         if (busyStateManager == null || busyStateManager.isBusy()) {
@@ -180,12 +180,12 @@ public class SearchPanelController {
         }
 
         busyStateManager.setSearchBusy(true, "Searching for \"" + keyword + "\"...");
-        // 搜索和必要的下载预览都在后台线程执行，避免阻塞 Swing 事件线程。
+        // Search and any required preview downloads run in a background thread to avoid blocking the Swing event thread.
         new SwingWorker<SearchTaskResult, Void>() {
             @Override
             protected SearchTaskResult doInBackground() {
                 try {
-                    // 关键词先在客户端用搜索私钥变成陷门，服务端只拿陷门做密文匹配。
+                    // The client first converts the keyword into a trapdoor with the search private key; the server only uses the trapdoor for ciphertext matching.
                     byte[] trapdoor = PEKSUtil.getTrapdoor(keyBundle.peksPrivateKey(), keyword);
                     ServerResponse response = serviceClient.search(trapdoor);
                     if (!response.isSuccess()) {
@@ -194,7 +194,7 @@ public class SearchPanelController {
 
                     if (response.getData() instanceof List<?> rawResults) {
                         List<EncryptedData> parsedResults = castSearchResults(rawResults);
-                        // 除密文关键词外，再用 docId/文件名做兜底模糊匹配，提升可用性。
+                        // Besides encrypted-keyword matching, use docId/file-name fuzzy matching as a usability fallback.
                         List<EncryptedData> fallbackResults = searchByDocIdOrFileName(keyword);
                         List<EncryptedData> mergedResults = mergeByDocId(parsedResults, fallbackResults);
                         return SearchTaskResult.success(mergedResults, buildImagePreviews(mergedResults));
@@ -232,7 +232,7 @@ public class SearchPanelController {
     }
 
     /**
-     * 将服务端返回的原始列表转换为 EncryptedData 列表。
+     * Converts the raw list returned by the server into an EncryptedData list.
      */
     private List<EncryptedData> castSearchResults(List<?> rawResults) {
         List<EncryptedData> results = new ArrayList<>();
@@ -243,7 +243,7 @@ public class SearchPanelController {
     }
 
     /**
-     * 将服务端失败响应转换成用户可读的错误消息。
+     * Converts a failed server response into a user-readable error message.
      */
     private String formatFailedResponse(String action, ServerResponse response) {
         String message = response == null ? null : response.getMessage();
@@ -254,7 +254,7 @@ public class SearchPanelController {
     }
 
     /**
-     * 使用文档列表做 docId/文件名模糊匹配，命中后再下载完整文档用于展示。
+     * Uses the document list for docId/file-name fuzzy matching, then downloads full documents for matched items.
      */
     private List<EncryptedData> searchByDocIdOrFileName(String keyword) throws Exception {
         ServerResponse listResponse = serviceClient.listDocuments();
@@ -273,7 +273,7 @@ public class SearchPanelController {
             if (!docId.contains(normalizedKeyword) && !fileName.contains(normalizedKeyword)) {
                 continue;
             }
-            // 摘要不含密文正文，因此命中后需要下载完整文档对象。
+            // Summaries do not include encrypted content, so a full document object is downloaded after a match.
             ServerResponse downloadResponse = serviceClient.downloadDocument(summary.getDocId());
             if (downloadResponse.isSuccess() && downloadResponse.getData() instanceof EncryptedData data) {
                 matched.add(data);
@@ -283,7 +283,7 @@ public class SearchPanelController {
     }
 
     /**
-     * 合并两组结果，并按 docId 去重。
+     * Merges two result sets and deduplicates by docId.
      */
     private List<EncryptedData> mergeByDocId(List<EncryptedData> primary, List<EncryptedData> secondary) {
         List<EncryptedData> merged = new ArrayList<>(primary);
@@ -306,7 +306,7 @@ public class SearchPanelController {
     }
 
     /**
-     * 确保预览所需的加密正文存在；轻量搜索结果缺正文时在后台下载完整文档。
+     * Ensures encrypted content needed for preview exists; downloads the full document in the background for lightweight search results.
      */
     private EncryptedData downloadPreviewContent(EncryptedData data) throws Exception {
         if (data.getEncryptedContent() != null && data.getEncryptedContent().length > 0) {
@@ -320,7 +320,7 @@ public class SearchPanelController {
     }
 
     /**
-     * 在搜索后台任务中提前下载、解密图片预览，避免结果渲染时阻塞 EDT。
+     * Downloads and decrypts image previews inside the background search task to avoid blocking the EDT during result rendering.
      */
     private Map<String, ImagePreview> buildImagePreviews(List<EncryptedData> results) {
         Map<String, ImagePreview> previews = new HashMap<>();
@@ -343,14 +343,14 @@ public class SearchPanelController {
                     ));
                 }
             } catch (Exception ignored) {
-                // 图片预览失败不影响搜索结果本身展示。
+                // Image preview failures do not affect display of the search result itself.
             }
         }
         return previews;
     }
 
     /**
-     * 判断搜索结果是否适合展示图片预览。
+     * Checks whether a search result can display an image preview.
      */
     private boolean isPreviewableImage(EncryptedData data) {
         if (data == null) {
@@ -362,7 +362,7 @@ public class SearchPanelController {
     }
 
     /**
-     * 清空并重新渲染搜索结果列表。
+     * Clears and rerenders the search result list.
      */
     private void renderSearchResults(List<EncryptedData> results) {
         resultListPanel.removeAll();
@@ -377,7 +377,7 @@ public class SearchPanelController {
             return;
         }
 
-        // 每条结果独立卡片展示，卡片间用固定垂直间距隔开。
+        // Each result is shown as a separate card with fixed vertical spacing between cards.
         for (EncryptedData result : results) {
             resultListPanel.add(buildResultCard(result));
             resultListPanel.add(Box.createVerticalStrut(8));
@@ -392,7 +392,7 @@ public class SearchPanelController {
     }
 
     /**
-     * 构建单个搜索结果卡片。
+     * Builds a single search result card.
      */
     private JComponent buildResultCard(EncryptedData data) {
         JPanel card = new JPanel(new BorderLayout(6, 6));
@@ -403,7 +403,7 @@ public class SearchPanelController {
 
         JComponent previewComponent = buildPreviewTriggerComponent(data);
         if (previewComponent != null) {
-            // 文件预览入口放在卡片顶部，文本信息放在下方。
+            // The file preview entry sits at the top of the card, with text information below it.
             JPanel previewRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
             previewRow.setOpaque(false);
             previewRow.add(previewComponent);
@@ -426,7 +426,7 @@ public class SearchPanelController {
     }
 
     /**
-     * 生成结果卡片中的文本描述，包括元数据、描述和可选正文预览。
+     * Generates the text description in a result card, including metadata, description, and optional content preview.
      */
     private String buildResultInfoText(EncryptedData result) {
         StringBuilder sb = new StringBuilder();
@@ -445,7 +445,7 @@ public class SearchPanelController {
                 return sb.toString();
             }
             try {
-                // 文本预览在客户端本地解密，服务端仍不接触明文内容。
+                // Text previews are decrypted locally on the client; the server still never sees plaintext content.
                 byte[] decryptedBytes = DESUtil.decrypt(result.getEncryptedContent(), keyBundle.desKey());
                 String content = new String(decryptedBytes, StandardCharsets.UTF_8);
                 sb.append("Content: ").append(truncate(content, 600));
@@ -459,7 +459,7 @@ public class SearchPanelController {
     }
 
     /**
-     * 从加密关键词元数据中恢复用户输入的描述。
+     * Restores the user-entered description from encrypted keyword metadata.
      */
     private String extractDescription(EncryptedData data) {
         if (data.getEncryptedKeywordMetadata() == null || data.getEncryptedKeywordMetadata().length == 0) {
@@ -469,7 +469,7 @@ public class SearchPanelController {
             byte[] decryptedMetadata = DESUtil.decrypt(data.getEncryptedKeywordMetadata(), keyBundle.desKey());
             String metadataText = new String(decryptedMetadata, StandardCharsets.UTF_8);
             String prefix = DocumentOperationService.DESCRIPTION_METADATA_PREFIX;
-            // 描述行使用固定前缀，后续普通关键词行会被跳过。
+            // Description lines use a fixed prefix; subsequent normal keyword lines are skipped.
             for (String line : metadataText.split("\\R")) {
                 String value = line == null ? "" : line.trim();
                 if (!value.startsWith(prefix)) {
@@ -488,7 +488,7 @@ public class SearchPanelController {
     }
 
     /**
-     * 截断过长文本，避免搜索结果卡片被大文档撑得过高。
+     * Truncates long text to prevent large documents from making result cards too tall.
      */
     private String truncate(String value, int maxLength) {
         if (value == null) {
@@ -501,7 +501,7 @@ public class SearchPanelController {
     }
 
     /**
-     * 为搜索结果创建可点击预览入口。图片用缩略图，其它文件用类型图标。
+     * Creates a clickable preview entry for a search result. Images use thumbnails; other files use type icons.
      */
     private JComponent buildPreviewTriggerComponent(EncryptedData data) {
         if (data == null) {
@@ -524,7 +524,7 @@ public class SearchPanelController {
         iconLabel.addMouseListener(new MouseAdapter() {
             @Override
             public void mouseClicked(MouseEvent event) {
-                // 缩略图点击后打开模态大图预览。
+                // Clicking a thumbnail opens a modal full-image preview.
                 showImagePreviewDialog(data.getFileName(), imagePreview.fullImage());
             }
         });
@@ -532,7 +532,7 @@ public class SearchPanelController {
     }
 
     /**
-     * 为非图片文件创建类型图标，点击后后台加载预览。
+     * Creates a type icon for non-image files; clicking it loads the preview in the background.
      */
     private JComponent buildFileIconComponent(EncryptedData data) {
         JLabel iconLabel = new JLabel(new FileTypeIcon(fileTypeLabel(data), fileTypeColor(data)));
@@ -548,7 +548,7 @@ public class SearchPanelController {
     }
 
     /**
-     * 后台下载和解密文件，再根据文件类型打开预览窗口。
+     * Downloads and decrypts the file in the background, then opens the preview window based on file type.
      */
     private void openDocumentPreview(EncryptedData data) {
         if (data == null || busyStateManager == null || busyStateManager.isBusy()) {
@@ -590,7 +590,7 @@ public class SearchPanelController {
     }
 
     /**
-     * 生成预览数据。该方法运行在后台线程，避免解密、PDF 渲染或 Excel 解析阻塞界面。
+     * Builds preview data. This method runs in a background thread to avoid blocking the UI with decryption, PDF rendering, or Excel parsing.
      */
     private DocumentPreview loadDocumentPreview(EncryptedData data) throws Exception {
         EncryptedData previewSource = downloadPreviewContent(data);
@@ -623,7 +623,7 @@ public class SearchPanelController {
     }
 
     /**
-     * 展示任意文件预览对话框。
+     * Shows a preview dialog for any supported file.
      */
     private void showDocumentPreviewDialog(DocumentPreview preview) {
         JDialog dialog = new JDialog(owner, preview.title(), true);
@@ -639,7 +639,7 @@ public class SearchPanelController {
     }
 
     /**
-     * 根据预览类型创建 Swing 内容组件。
+     * Creates a Swing content component based on preview type.
      */
     private JComponent buildPreviewContent(DocumentPreview preview) {
         return switch (preview.kind()) {
@@ -705,7 +705,7 @@ public class SearchPanelController {
     }
 
     /**
-     * 使用 PDFBox 将 PDF 页面渲染成图片。
+     * Renders PDF pages into images with PDFBox.
      */
     private List<BufferedImage> renderPdfPages(byte[] content) throws Exception {
         List<BufferedImage> pages = new ArrayList<>();
@@ -720,7 +720,7 @@ public class SearchPanelController {
     }
 
     /**
-     * 读取 Excel 工作簿内容，转换成表格预览数据。
+     * Reads an Excel workbook and converts it into table preview data.
      */
     private List<SheetPreview> readSpreadsheetSheets(byte[] content) throws Exception {
         List<SheetPreview> previews = new ArrayList<>();
@@ -751,7 +751,7 @@ public class SearchPanelController {
     }
 
     /**
-     * 估算预览需要展示的列数。
+     * Estimates the number of columns that should be shown in the preview.
      */
     private int detectPreviewColumnCount(Sheet sheet, int rowLimit) {
         int maxColumns = 1;
@@ -765,7 +765,7 @@ public class SearchPanelController {
     }
 
     /**
-     * 将 0 基列序号转换成 Excel 风格列名。
+     * Converts a zero-based column index to an Excel-style column name.
      */
     private String excelColumnName(int columnIndex) {
         StringBuilder name = new StringBuilder();
@@ -779,7 +779,7 @@ public class SearchPanelController {
     }
 
     /**
-     * 从 Word 文档中提取可阅读文本。
+     * Extracts readable text from a Word document.
      */
     private String extractWordPreviewText(EncryptedData data, byte[] content) throws Exception {
         if (hasExtension(data, ".docx")) {
@@ -880,7 +880,7 @@ public class SearchPanelController {
     }
 
     /**
-     * 展示图片大图预览对话框。
+     * Shows the full-size image preview dialog.
      */
     private void showImagePreviewDialog(String fileName, BufferedImage image) {
         int maxWidth = Math.max(480, owner.getWidth() - 120);
@@ -904,7 +904,7 @@ public class SearchPanelController {
     }
 
     /**
-     * 将图片等比缩放到指定最大宽高内。
+     * Scales an image proportionally within the specified maximum width and height.
      */
     private Image scaleImageToFit(BufferedImage image, int maxWidth, int maxHeight) {
         int width = image.getWidth();
@@ -919,7 +919,7 @@ public class SearchPanelController {
     }
 
     /**
-     * 在后台线程生成缩略图图标，避免 Swing 渲染搜索结果时才做平滑缩放。
+     * Creates thumbnail icons in a background thread to avoid smooth-scaling work during Swing result rendering.
      */
     private ImageIcon createThumbnailIcon(BufferedImage image, int maxWidth, int maxHeight) {
         int width = image.getWidth();
@@ -941,7 +941,7 @@ public class SearchPanelController {
     }
 
     /**
-     * 后台准备好的图片预览数据。
+     * Image preview data prepared in the background.
      */
     private record ImagePreview(BufferedImage fullImage, ImageIcon thumbnailIcon) {
     }
@@ -987,7 +987,7 @@ public class SearchPanelController {
     }
 
     /**
-     * 简单文件类型图标，用于非图片搜索结果的预览入口。
+     * Simple file-type icon used as the preview entry for non-image search results.
      */
     private static final class FileTypeIcon implements Icon {
         private static final int WIDTH = 92;
@@ -1048,7 +1048,7 @@ public class SearchPanelController {
     }
 
     /**
-     * 图片预览组件：默认适应窗口完整显示，也允许放大查看细节。
+     * Image preview component: fits the full image to the window by default and also allows zooming in for details.
      */
     private static final class ImagePreviewComponent extends JPanel {
         private static final double MIN_ZOOM = 0.25d;
@@ -1163,7 +1163,7 @@ public class SearchPanelController {
     }
 
     /**
-     * PDF 预览组件：默认适应窗口完整显示，也允许用户放大到原尺寸查看细节。
+     * PDF preview component: fits pages to the window by default and also allows users to zoom to original size for details.
      */
     private static final class PdfPreviewComponent extends JPanel {
         private static final double MIN_ZOOM = 0.25d;
@@ -1328,12 +1328,12 @@ public class SearchPanelController {
     }
 
     private record SearchTaskResult(List<EncryptedData> results, Map<String, ImagePreview> imagePreviews, String errorMessage) {
-        /** 创建成功结果。 */
+        /** Creates a successful result. */
         private static SearchTaskResult success(List<EncryptedData> results, Map<String, ImagePreview> imagePreviews) {
             return new SearchTaskResult(results, imagePreviews, null);
         }
 
-        /** 创建失败结果。 */
+        /** Creates a failed result. */
         private static SearchTaskResult failure(String errorMessage) {
             return new SearchTaskResult(Collections.emptyList(), Collections.emptyMap(), errorMessage);
         }

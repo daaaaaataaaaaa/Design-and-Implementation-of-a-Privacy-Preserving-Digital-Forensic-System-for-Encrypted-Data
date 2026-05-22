@@ -1,23 +1,34 @@
 import { ethers } from "ethers";
 import { DatabaseZap, Play, RotateCcw, ShieldCheck } from "lucide-react";
-import { FormEvent, useMemo, useState } from "react";
-import { authHeader, DocumentSummary, jsonRequest, ML_API, PredictionResult, SE_API } from "../lib/api";
+import { FormEvent, useEffect, useMemo, useState } from "react";
+import {
+  authHeader,
+  DocumentSummary,
+  getMlServiceStatus,
+  jsonRequest,
+  ML_API,
+  MlServiceStatus,
+  PredictionResult,
+  SE_API,
+  startMlService
+} from "../lib/api";
+import type { PageKey } from "../components/AppShell";
 import {
   evidenceRegistryAbi,
   getDefaultEvidenceRegistryAddress,
   rememberEvidenceRegistryAddress
 } from "../lib/blockchain";
 
-type AuthResponse = {
-  token: string;
-  username: string;
-};
-
 type EthereumWindow = Window & {
   ethereum?: ethers.Eip1193Provider;
 };
 
 type PreservationStage = "idle" | "saving" | "notarizing" | "done" | "error";
+
+type DetectionProps = {
+  authToken: string;
+  onNavigate: (page: PageKey) => void;
+};
 
 const sampleFeatures = {
   dur: 0.121,
@@ -37,12 +48,14 @@ const sampleFeatures = {
   service_dns: 0
 };
 
-export function Detection() {
+export function Detection({ authToken, onNavigate }: DetectionProps) {
   const [featuresText, setFeaturesText] = useState(JSON.stringify(sampleFeatures, null, 2));
   const [submittedFeatures, setSubmittedFeatures] = useState<Record<string, unknown> | null>(null);
   const [result, setResult] = useState<PredictionResult | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [mlStatus, setMlStatus] = useState<MlServiceStatus | null>(null);
+  const [startingMl, setStartingMl] = useState(false);
   const [contractAddress, setContractAddress] = useState(getDefaultEvidenceRegistryAddress);
   const [preservationStage, setPreservationStage] = useState<PreservationStage>("idle");
   const [preservationStatus, setPreservationStatus] = useState("");
@@ -57,9 +70,41 @@ export function Detection() {
     }
   }, [featuresText]);
 
+  const mlRunning = mlStatus?.running ?? false;
+
+  function refreshMlStatus() {
+    getMlServiceStatus()
+      .then(setMlStatus)
+      .catch((err: Error) => setError(err.message));
+  }
+
+  async function startMl() {
+    setError("");
+    setStartingMl(true);
+    try {
+      const status = await startMlService(authToken);
+      setMlStatus(status);
+      if (!status.running) {
+        setError(status.message);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to start ML service");
+    } finally {
+      setStartingMl(false);
+    }
+  }
+
+  useEffect(() => {
+    refreshMlStatus();
+  }, []);
+
   async function submit(event: FormEvent) {
     event.preventDefault();
     setError("");
+    if (!mlRunning) {
+      setError("Start ML before running detection.");
+      return;
+    }
     setLoading(true);
     try {
       const parsed = JSON.parse(featuresText);
@@ -90,45 +135,26 @@ export function Detection() {
   }
 
   async function ensureVaultToken(): Promise<string> {
-    const storedToken = localStorage.getItem("se_token") ?? "";
-    if (storedToken) {
-      try {
-        await jsonRequest<DocumentSummary[]>(`${SE_API}/api/se/documents`, {
-          headers: authHeader(storedToken)
-        });
-        return storedToken;
-      } catch {
-        localStorage.removeItem("se_token");
-      }
-    }
-
-    const username = import.meta.env.VITE_SE_DEMO_USERNAME ?? "demo";
-    const password = import.meta.env.VITE_SE_DEMO_PASSWORD ?? "demo123";
-    let response: AuthResponse;
     try {
-      response = await jsonRequest<AuthResponse>(`${SE_API}/api/se/auth/login`, {
-        method: "POST",
-        body: JSON.stringify({ username, password })
+      await jsonRequest<DocumentSummary[]>(`${SE_API}/api/se/documents`, {
+        headers: authHeader(authToken)
       });
+      return authToken;
     } catch {
-      response = await jsonRequest<AuthResponse>(`${SE_API}/api/se/auth/register`, {
-        method: "POST",
-        body: JSON.stringify({ username, password })
-      });
+      throw new Error("Your encrypted vault session expired. Sign out and sign in again before saving evidence.");
     }
-
-    localStorage.setItem("se_token", response.token);
-    localStorage.setItem("se_user", response.username);
-    return response.token;
   }
 
   async function getEvidenceContract() {
     const ethereum = (window as EthereumWindow).ethereum;
     if (!ethereum) {
-      throw new Error("未检测到 MetaMask 或浏览器钱包，无法执行链上存证。");
+      throw new Error("MetaMask or a browser wallet was not detected, so on-chain evidence anchoring cannot run.");
     }
     if (!contractAddress.trim()) {
-      throw new Error("请先填写 EvidenceRegistry 合约地址。");
+      throw new Error("Enter the EvidenceRegistry contract address first.");
+    }
+    if (!ethers.isAddress(contractAddress.trim())) {
+      throw new Error("The EvidenceRegistry contract address is invalid. It must be an Ethereum address starting with 0x.");
     }
     await ethereum.request({ method: "eth_requestAccounts" });
     const provider = new ethers.BrowserProvider(ethereum);
@@ -174,10 +200,24 @@ export function Detection() {
   }
 
   async function preserveResult() {
-    if (!result || !submittedFeatures) return;
+    if (!result || !submittedFeatures) {
+      setPreservationStage("error");
+      setPreservationStatus("Run detection first to generate an evidence hash before saving.");
+      return;
+    }
+    if (!contractAddress.trim()) {
+      setPreservationStage("error");
+      setPreservationStatus("Enter the EvidenceRegistry contract address first. To only view the vault, click Encrypted Evidence Vault above.");
+      return;
+    }
+    if (!ethers.isAddress(contractAddress.trim())) {
+      setPreservationStage("error");
+      setPreservationStatus("The EvidenceRegistry contract address is invalid. It must be an Ethereum address starting with 0x.");
+      return;
+    }
 
     setPreservationStage("saving");
-    setPreservationStatus("正在写入加密证据库...");
+    setPreservationStatus("Writing to the encrypted evidence vault...");
     setVaultDocument(null);
     setChainTxHash("");
 
@@ -200,7 +240,7 @@ export function Detection() {
       });
       setVaultDocument(savedDocument);
       setPreservationStage("notarizing");
-      setPreservationStatus(`已加密保存为 ${savedDocument.docId}，正在提交链上交易...`);
+      setPreservationStatus(`Encrypted and saved as ${savedDocument.docId}. Submitting the on-chain transaction...`);
 
       const contract = await getEvidenceContract();
       const tx = await contract.storeJSONEvidence(
@@ -214,32 +254,48 @@ export function Detection() {
         inferField(submittedFeatures, ["targetUrl", "target_url", "dst_ip", "daddr"], "N/A")
       );
       setChainTxHash(tx.hash);
-      setPreservationStatus(`交易已提交：${tx.hash}`);
+      setPreservationStatus(`Transaction submitted: ${tx.hash}`);
       await tx.wait();
       setPreservationStage("done");
-      setPreservationStatus(`完整流程完成：${savedDocument.docId} 已加密保存并完成链上存证。`);
+      setPreservationStatus(`Workflow completed: ${savedDocument.docId} was encrypted, saved, and anchored on-chain.`);
     } catch (err) {
       setPreservationStage("error");
-      setPreservationStatus(err instanceof Error ? err.message : "保存与链上存证流程失败");
+      setPreservationStatus(err instanceof Error ? err.message : "Save and on-chain evidence anchoring workflow failed");
     }
   }
 
   const preserving = preservationStage === "saving" || preservationStage === "notarizing";
-  const canPreserve = Boolean(result && submittedFeatures && contractAddress.trim() && !preserving);
 
   return (
     <section className="page">
       <div className="page-header">
         <div>
           <p className="eyebrow">UNSW-NB15 model facade</p>
-          <h1>入侵检测</h1>
+          <h1>Intrusion Detection</h1>
         </div>
+        {!mlRunning && (
+          <button className="primary-action" type="button" onClick={startMl} disabled={startingMl}>
+            <Play size={17} /> {startingMl ? "Starting ML" : "Start ML"}
+          </button>
+        )}
       </div>
+
+      {!mlRunning && (
+        <div className="ml-gate">
+          <div>
+            <strong>ML functions are off</strong>
+            <span>Start ML to enable network traffic prediction.</span>
+          </div>
+          <button className="primary-action" type="button" onClick={startMl} disabled={startingMl}>
+            <Play size={17} /> {startingMl ? "Starting ML" : "Start ML"}
+          </button>
+        </div>
+      )}
 
       <form className="two-column align-start" onSubmit={submit}>
         <section className="panel">
           <div className="panel-heading">
-            <h2>网络流量特征</h2>
+            <h2>Network Traffic Features</h2>
             <span className="pill">{featureCount} fields</span>
           </div>
           <textarea
@@ -249,8 +305,8 @@ export function Detection() {
             spellCheck={false}
           />
           <div className="button-row">
-            <button className="primary-action" type="submit" disabled={loading}>
-              <Play size={17} /> {loading ? "检测中" : "运行检测"}
+            <button className="primary-action" type="submit" disabled={loading || !mlRunning}>
+              <Play size={17} /> {loading ? "Detecting" : "Run Detection"}
             </button>
             <button
               className="secondary-action"
@@ -263,7 +319,7 @@ export function Detection() {
                 resetPreservationState();
               }}
             >
-              <RotateCcw size={17} /> 重置样例
+              <RotateCcw size={17} /> Reset Sample
             </button>
           </div>
           {error && <div className="notice danger">{error}</div>}
@@ -271,7 +327,7 @@ export function Detection() {
 
         <section className="panel">
           <div className="panel-heading">
-            <h2>检测结果</h2>
+            <h2>Detection Results</h2>
           </div>
           {result ? (
             <div className="result-stack">
@@ -280,9 +336,9 @@ export function Detection() {
                 <strong>{String(result.prediction)}</strong>
               </div>
               <div className="kv-grid">
-                <span>填充特征</span><strong>{result.filled_feature_count}</strong>
-                <span>缺失特征</span><strong>{result.missing_feature_count}</strong>
-                <span>证据哈希</span><code>{result.evidence_hash}</code>
+                <span>Filled Features</span><strong>{result.filled_feature_count}</strong>
+                <span>Missing Features</span><strong>{result.missing_feature_count}</strong>
+                <span>Evidence Hash</span><code>{result.evidence_hash}</code>
               </div>
               {result.probability && (
                 <div className="probability-list">
@@ -297,28 +353,36 @@ export function Detection() {
               )}
               <div className="preservation-flow">
                 <div className="pipeline-steps">
-                  <span className={vaultDocument ? "pipeline-step done" : preservationStage === "saving" ? "pipeline-step active" : "pipeline-step"}>
-                    <DatabaseZap size={16} /> 加密证据库
-                  </span>
-                  <span className={preservationStage === "done" ? "pipeline-step done" : preservationStage === "notarizing" ? "pipeline-step active" : "pipeline-step"}>
-                    <ShieldCheck size={16} /> 链上存证
-                  </span>
+                  <button
+                    className={vaultDocument ? "pipeline-step done" : preservationStage === "saving" ? "pipeline-step active" : "pipeline-step"}
+                    type="button"
+                    onClick={() => onNavigate("vault")}
+                  >
+                    <DatabaseZap size={16} /> Encrypted Evidence Vault
+                  </button>
+                  <button
+                    className={preservationStage === "done" ? "pipeline-step done" : preservationStage === "notarizing" ? "pipeline-step active" : "pipeline-step"}
+                    type="button"
+                    onClick={() => onNavigate("blockchain")}
+                  >
+                    <ShieldCheck size={16} /> On-Chain Evidence
+                  </button>
                 </div>
-                <label>EvidenceRegistry 合约地址</label>
+                <label>EvidenceRegistry Contract Address</label>
                 <input
                   value={contractAddress}
                   onChange={(event) => updateContractAddress(event.target.value)}
                   placeholder="0x..."
                 />
                 <div className="button-row">
-                  <button className="primary-action" type="button" disabled={!canPreserve} onClick={preserveResult}>
-                    <DatabaseZap size={17} /> {preserving ? "流程执行中" : "保存证据库并链上存证"}
+                  <button className="primary-action" type="button" disabled={preserving} onClick={preserveResult}>
+                  <DatabaseZap size={17} /> {preserving ? "Workflow Running" : "Save to Vault and Anchor On-Chain"}
                   </button>
                 </div>
                 {vaultDocument && (
                   <div className="kv-grid compact">
-                    <span>证据库 ID</span><strong>{vaultDocument.docId}</strong>
-                    <span>链上交易</span><code>{chainTxHash || "等待提交"}</code>
+                  <span>Vault ID</span><strong>{vaultDocument.docId}</strong>
+                  <span>On-Chain Transaction</span><code>{chainTxHash || "Pending submission"}</code>
                   </div>
                 )}
                 {preservationStatus && (
@@ -329,7 +393,7 @@ export function Detection() {
               </div>
             </div>
           ) : (
-            <div className="empty-state">运行一次检测后，这里会显示预测类别、概率和可用于链上存证的哈希。</div>
+          <div className="empty-state">Run detection once to show the predicted class, probability, and hash for on-chain evidence anchoring.</div>
           )}
         </section>
       </form>

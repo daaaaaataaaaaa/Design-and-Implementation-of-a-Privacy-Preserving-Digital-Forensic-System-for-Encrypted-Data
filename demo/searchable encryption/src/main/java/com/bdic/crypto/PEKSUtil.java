@@ -22,37 +22,37 @@ import java.util.Arrays;
 import java.util.Locale;
 
 /**
- * 可搜索关键词加密工具类。
+ * Searchable keyword encryption utility.
  *
- * <p>PEKS 的标准思想是：用公钥为关键词生成可搜索密文，用私钥为查询词生成 trapdoor，
- * 服务端只拿密文和 trapdoor 执行匹配测试。本项目不额外引入双线性对库，因此使用 JDK
- * 自带 RSA trapdoor permutation 表达教学级的非对称 PEKS 接口形态；它不是生产级标准 PEKS。</p>
+ * <p>The standard PEKS idea is to generate searchable keyword ciphertext with a public key and generate trapdoors for query terms with a private key.
+ * The server performs matching tests using only ciphertext and trapdoors. This project does not add a bilinear-pairing library, so it uses the JDK's
+ * built-in RSA trapdoor permutation to express a teaching-level asymmetric PEKS interface; it is not production-grade standard PEKS.</p>
  */
 public class PEKSUtil {
 
-    /** 搜索密钥使用的非对称算法。 */
+    /** Asymmetric algorithm used for search keys. */
     private static final String KEY_ALGORITHM = "RSA";
 
-    /** RSA 搜索密钥长度。 */
+    /** RSA search key length. */
     private static final int KEY_SIZE_BITS = 2048;
 
-    /** 关键词映射到整数代表元时使用的哈希算法。 */
+    /** Hash algorithm used when mapping keywords to integer representatives. */
     private static final String HASH_ALGORITHM = "SHA-256";
 
-    /** 二进制载荷格式标识，避免误把旧数据解析成新格式。 */
+    /** Binary payload format marker used to avoid parsing old data as the new format. */
     private static final byte[] MAGIC = new byte[]{'P', 'E', 'K', 'S'};
 
-    /** 关键词密文载荷类型。 */
+    /** Keyword ciphertext payload type. */
     private static final byte CIPHERTEXT_TYPE = 1;
 
-    /** 查询陷门载荷类型。 */
+    /** Query trapdoor payload type. */
     private static final byte TRAPDOOR_TYPE = 2;
 
-    /** 哈希域分离标签，避免和项目内其他 SHA-256 用途混淆。 */
+    /** Hash domain-separation label to avoid confusion with other SHA-256 uses in the project. */
     private static final byte[] KEYWORD_HASH_DOMAIN = "PEKS-RSA-KEYWORD-v1".getBytes(StandardCharsets.US_ASCII);
 
     /**
-     * 生成 PEKS 搜索公私钥对。公钥用于上传阶段生成关键词密文，私钥用于搜索阶段生成 trapdoor。
+     * Generates a PEKS search key pair. The public key creates keyword ciphertext during upload, and the private key creates trapdoors during search.
      */
     public static KeyPair generateKeyPair() throws GeneralSecurityException {
         KeyPairGenerator keyPairGenerator = KeyPairGenerator.getInstance(KEY_ALGORITHM);
@@ -61,7 +61,7 @@ public class PEKSUtil {
     }
 
     /**
-     * 根据本地保存的 X.509 字节恢复 PEKS 公钥。
+     * Restores a PEKS public key from locally stored X.509 bytes.
      */
     public static PublicKey getPublicKeyFromBytes(byte[] keyBytes) throws GeneralSecurityException {
         KeyFactory keyFactory = KeyFactory.getInstance(KEY_ALGORITHM);
@@ -69,7 +69,7 @@ public class PEKSUtil {
     }
 
     /**
-     * 根据本地保存的 PKCS#8 字节恢复 PEKS 私钥。
+     * Restores a PEKS private key from locally stored PKCS#8 bytes.
      */
     public static PrivateKey getPrivateKeyFromBytes(byte[] keyBytes) throws GeneralSecurityException {
         KeyFactory keyFactory = KeyFactory.getInstance(KEY_ALGORITHM);
@@ -77,7 +77,7 @@ public class PEKSUtil {
     }
 
     /**
-     * 用搜索公钥为关键词生成可搜索密文，随文档一起保存到服务端索引表。
+     * Generates searchable ciphertext for a keyword with the search public key and stores it in the server index table with the document.
      */
     public static byte[] encrypt(PublicKey publicSearchKey, String keyword) throws Exception {
         RSAPublicKey rsaPublicKey = requireRsaPublicKey(publicSearchKey);
@@ -96,7 +96,7 @@ public class PEKSUtil {
     }
 
     /**
-     * 用搜索私钥为查询词生成 trapdoor，服务端用它和关键词密文做匹配。
+     * Generates a trapdoor for a query term with the search private key; the server matches it against keyword ciphertext.
      */
     public static byte[] getTrapdoor(PrivateKey privateSearchKey, String query) throws Exception {
         RSAPrivateKey rsaPrivateKey = requireRsaPrivateKey(privateSearchKey);
@@ -110,14 +110,14 @@ public class PEKSUtil {
     }
 
     /**
-     * 兼容旧代码入口，内部直接转到正式的 trapdoor 生成方法。
+     * Compatibility entry point for older code; delegates to the formal trapdoor generation method.
      */
     public static byte[] getInternalTrapdoor(PrivateKey key, String keyword) throws Exception {
         return getTrapdoor(key, keyword);
     }
 
     /**
-     * 服务端测试一个 PEKS 密文是否被当前 trapdoor 命中。
+     * Lets the server test whether a PEKS ciphertext is matched by the current trapdoor.
      */
     public static boolean test(byte[] peksCiphertext, byte[] trapdoor) {
         try {
@@ -146,7 +146,7 @@ public class PEKSUtil {
     }
 
     /**
-     * 把关键词规范化后映射到 RSA 模数空间中的稳定代表元。
+     * Normalizes a keyword and maps it to a stable representative in the RSA modulus space.
      */
     private static BigInteger keywordRepresentative(BigInteger modulus, String keyword) throws GeneralSecurityException {
         MessageDigest digest = MessageDigest.getInstance(HASH_ALGORITHM);
@@ -165,7 +165,7 @@ public class PEKSUtil {
     }
 
     /**
-     * 统一关键词大小写和首尾空白，保证上传和搜索使用同一匹配口径。
+     * Normalizes keyword case and surrounding whitespace so upload and search use the same matching form.
      */
     private static String normalizeKeyword(String keyword) {
         if (keyword == null) {
@@ -175,7 +175,7 @@ public class PEKSUtil {
     }
 
     /**
-     * 编码 PEKS 密文或 trapdoor。每个 BigInteger 都按无符号大端字节写入。
+     * Encodes a PEKS ciphertext or trapdoor. Each BigInteger is written as unsigned big-endian bytes.
      */
     private static byte[] encodePayload(byte payloadType, BigInteger... values) {
         try {
@@ -197,7 +197,7 @@ public class PEKSUtil {
     }
 
     /**
-     * 解码并校验 PEKS 关键词密文。
+     * Decodes and validates PEKS keyword ciphertext.
      */
     private static RsaPeksCiphertext decodeCiphertext(byte[] payload) {
         BigInteger[] values = decodePayload(payload, CIPHERTEXT_TYPE, 3);
@@ -205,7 +205,7 @@ public class PEKSUtil {
     }
 
     /**
-     * 解码并校验 PEKS 查询 trapdoor。
+     * Decodes and validates a PEKS query trapdoor.
      */
     private static RsaPeksTrapdoor decodeTrapdoor(byte[] payload) {
         BigInteger[] values = decodePayload(payload, TRAPDOOR_TYPE, 2);
@@ -213,7 +213,7 @@ public class PEKSUtil {
     }
 
     /**
-     * 解码通用 PEKS 载荷。
+     * Decodes a generic PEKS payload.
      */
     private static BigInteger[] decodePayload(byte[] payload, byte expectedType, int expectedValueCount) {
         if (payload == null) {
@@ -257,7 +257,7 @@ public class PEKSUtil {
     }
 
     /**
-     * 要求调用方传入 RSA 公钥。
+     * Requires callers to pass an RSA public key.
      */
     private static RSAPublicKey requireRsaPublicKey(PublicKey publicKey) {
         if (publicKey instanceof RSAPublicKey rsaPublicKey) {
@@ -267,7 +267,7 @@ public class PEKSUtil {
     }
 
     /**
-     * 要求调用方传入 RSA 私钥。
+     * Requires callers to pass an RSA private key.
      */
     private static RSAPrivateKey requireRsaPrivateKey(PrivateKey privateKey) {
         if (privateKey instanceof RSAPrivateKey rsaPrivateKey) {
@@ -277,7 +277,7 @@ public class PEKSUtil {
     }
 
     /**
-     * BigInteger.toByteArray 可能带符号位，这里统一转成无符号表示。
+     * BigInteger.toByteArray may include a sign bit; convert it consistently to an unsigned representation here.
      */
     private static byte[] toUnsignedBytes(BigInteger value) {
         byte[] bytes = value.toByteArray();
@@ -288,7 +288,7 @@ public class PEKSUtil {
     }
 
     /**
-     * 按固定长度左侧补零，便于常量时间比较。
+     * Left-pads to a fixed length to support constant-time comparison.
      */
     private static byte[] toFixedLength(BigInteger value, int length) {
         byte[] unsigned = toUnsignedBytes(value);
@@ -303,20 +303,20 @@ public class PEKSUtil {
     }
 
     /**
-     * 返回无符号编码长度。
+     * Returns the unsigned encoded length.
      */
     private static int unsignedLength(BigInteger value) {
         return toUnsignedBytes(value).length;
     }
 
     /**
-     * RSA PEKS 关键词密文结构。
+     * RSA PEKS keyword ciphertext structure.
      */
     private record RsaPeksCiphertext(BigInteger modulus, BigInteger publicExponent, BigInteger encryptedRepresentative) {
     }
 
     /**
-     * RSA PEKS 查询 trapdoor 结构。
+     * RSA PEKS query trapdoor structure.
      */
     private record RsaPeksTrapdoor(BigInteger modulus, BigInteger value) {
     }

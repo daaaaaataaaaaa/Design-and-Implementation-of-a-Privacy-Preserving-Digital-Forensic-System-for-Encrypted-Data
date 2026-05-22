@@ -4,7 +4,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
-from typing import Any
+from typing import Annotated, Any
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
@@ -68,6 +68,10 @@ if ML_ROOT.exists():
 _feature_names: list[str] | None = None
 _model: Any | None = None
 _scaler: Any | None = None
+_report_count_cache: dict[str, tuple[int, int, int]] = {}
+
+REPORT_METHODS = ["SHAP", "LIME", "Permutation_Importance", "PDP"]
+ASSET_FOLDERS = [*REPORT_METHODS, "Exported_Model_Assets"]
 
 
 def load_feature_names() -> list[str]:
@@ -130,6 +134,101 @@ def report_path(method: str) -> Path:
     return allowed[method]
 
 
+def file_signature(path: Path) -> tuple[int, int]:
+    stat = path.stat()
+    return stat.st_mtime_ns, stat.st_size
+
+
+def count_report_entries(path: Path) -> int:
+    if not path.exists():
+        return 0
+
+    signature = file_signature(path)
+    cache_key = str(path)
+    cached = _report_count_cache.get(cache_key)
+    if cached and cached[:2] == signature:
+        return cached[2]
+
+    try:
+        count = 0
+        with path.open("r", encoding="utf-8") as report_file:
+            for line in report_file:
+                count += line.count('"Evidence_ID"')
+        if count == 0:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+            count = len(payload) if isinstance(payload, list) else 1
+    except (OSError, json.JSONDecodeError, UnicodeDecodeError):
+        count = 0
+
+    _report_count_cache[cache_key] = (*signature, count)
+    return count
+
+
+def skip_json_spacing(text: str, position: int) -> int:
+    while position < len(text) and text[position] in " \t\r\n":
+        position += 1
+    return position
+
+
+def read_report_slice(path: Path, offset: int, limit: int | None) -> list[dict[str, Any]]:
+    decoder = json.JSONDecoder()
+    text = path.read_text(encoding="utf-8")
+    position = skip_json_spacing(text, 0)
+    if position >= len(text):
+        return []
+
+    if text[position] != "[":
+        payload, _ = decoder.raw_decode(text, position)
+        return [payload] if offset == 0 and isinstance(payload, dict) else []
+
+    position += 1
+    index = 0
+    items: list[dict[str, Any]] = []
+    while position < len(text):
+        position = skip_json_spacing(text, position)
+        if position < len(text) and text[position] == "]":
+            break
+
+        item, position = decoder.raw_decode(text, position)
+        if index >= offset and isinstance(item, dict):
+            items.append(item)
+            if limit is not None and len(items) >= limit:
+                break
+
+        index += 1
+        position = skip_json_spacing(text, position)
+        if position < len(text) and text[position] == ",":
+            position += 1
+
+    return items
+
+
+def unique_png_assets_by_folder() -> dict[str, list[str]]:
+    assets: dict[str, list[str]] = {}
+    seen_hashes: set[str] = set()
+
+    for folder in ASSET_FOLDERS:
+        asset_dir = ML_ROOT / folder
+        if not asset_dir.exists():
+            continue
+
+        unique_files: list[str] = []
+        for path in sorted(asset_dir.glob("*.png")):
+            try:
+                image_hash = hashlib.sha256(path.read_bytes()).hexdigest()
+            except OSError:
+                continue
+            if image_hash in seen_hashes:
+                continue
+            seen_hashes.add(image_hash)
+            unique_files.append(path.name)
+
+        if unique_files:
+            assets[folder] = unique_files
+
+    return assets
+
+
 @app.get("/health")
 def health() -> dict[str, Any]:
     return {
@@ -142,23 +241,11 @@ def health() -> dict[str, Any]:
 @app.get("/api/ml/metadata")
 def metadata() -> dict[str, Any]:
     feature_names = load_feature_names()
-    explainability_assets: dict[str, list[str]] = {}
-    for folder in ["SHAP", "LIME", "Permutation_Importance", "PDP", "Exported_Model_Assets"]:
-        asset_dir = ML_ROOT / folder
-        if asset_dir.exists():
-            explainability_assets[folder] = sorted(path.name for path in asset_dir.glob("*.png"))
+    explainability_assets = unique_png_assets_by_folder()
 
     report_counts: dict[str, int] = {}
-    for method in ["SHAP", "LIME", "Permutation_Importance", "PDP"]:
-        path = report_path(method)
-        if path.exists():
-            try:
-                payload = json.loads(path.read_text(encoding="utf-8"))
-                report_counts[method] = len(payload) if isinstance(payload, list) else 1
-            except json.JSONDecodeError:
-                report_counts[method] = 0
-        else:
-            report_counts[method] = 0
+    for method in REPORT_METHODS:
+        report_counts[method] = count_report_entries(report_path(method))
 
     return {
         "service": "forensic-ml",
@@ -217,14 +304,15 @@ def predict(request: PredictionRequest) -> dict[str, Any]:
 
 
 @app.get("/api/ml/reports/{method}")
-def reports(method: str, limit: int = Query(20, ge=1, le=200)) -> list[dict[str, Any]]:
+def reports(
+    method: str,
+    limit: Annotated[int | None, Query(ge=1, le=5000)] = None,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> list[dict[str, Any]]:
     path = report_path(method)
     if not path.exists():
         raise HTTPException(status_code=404, detail=f"Report not found: {path}")
     try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
+        return read_report_slice(path, offset, limit)
     except json.JSONDecodeError as exc:
         raise HTTPException(status_code=500, detail=f"Invalid JSON report: {exc}") from exc
-    if isinstance(payload, list):
-        return payload[:limit]
-    return [payload]

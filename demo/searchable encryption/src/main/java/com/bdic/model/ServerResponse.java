@@ -4,24 +4,24 @@ import java.io.Serial;
 import java.io.Serializable;
 
 /**
- * 服务端统一响应对象。
+ * Unified server response object.
  *
- * <p>success 表示操作是否成功，message 用于界面提示，data 承载具体业务结果。</p>
+ * <p>success indicates whether the operation succeeded, message is used for UI prompts, and data carries the specific business result.</p>
  */
 public class ServerResponse implements Serializable {
-    /** Java 序列化版本号，保证响应对象在对象流中保持兼容。 */
+    /** Java serialization version to keep response objects compatible in object streams. */
     @Serial
     private static final long serialVersionUID = 1L;
 
-    /** 操作是否成功。 */
+    /** Whether the operation succeeded. */
     private final boolean success;
-    /** 展示给用户或调用方的说明信息。 */
+    /** Information shown to the user or caller. */
     private final String message;
-    /** 业务返回数据，例如会话信息、文档列表或下载的密文文档。 */
+    /** Business return data, such as session information, document lists, or downloaded encrypted documents. */
     private final Object data;
 
     /**
-     * 构造服务端统一响应。
+     * Constructs a unified server response.
      */
     public ServerResponse(boolean success, String message, Object data) {
         this.success = success;
@@ -29,17 +29,17 @@ public class ServerResponse implements Serializable {
         this.data = data;
     }
 
-    /** 返回操作是否成功。 */
+    /** Returns whether the operation succeeded. */
     public boolean isSuccess() {
         return success;
     }
 
-    /** 返回服务端消息。 */
+    /** Returns the server message. */
     public String getMessage() {
         return message;
     }
 
-    /** 返回业务数据负载。 */
+    /** Returns the business data payload. */
     public Object getData() {
         return data;
     }

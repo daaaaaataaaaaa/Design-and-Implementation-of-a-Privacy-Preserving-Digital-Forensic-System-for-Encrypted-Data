@@ -6,48 +6,48 @@ import java.security.SecureRandom;
 import java.util.Arrays;
 
 /**
- * 用户密码处理工具。
+ * User password handling utility.
  *
- * <p>服务端不保存明文密码，只保存随机盐和 PBKDF2 派生出的密码摘要。</p>
+ * <p>The server does not store plaintext passwords; it stores only random salts and PBKDF2-derived password hashes.</p>
  */
 public class PasswordUtil {
 
-    /** PBKDF2 迭代次数，次数越高暴力破解成本越高。 */
+    /** PBKDF2 iteration count; higher values increase brute-force cost. */
     private static final int ITERATIONS = 65536;
-    /** 派生出的密码摘要长度，单位为 bit。 */
+    /** Derived password hash length in bits. */
     private static final int KEY_LENGTH = 256;
-    /** 随机盐长度，单位为字节。 */
+    /** Random salt length in bytes. */
     private static final int SALT_LENGTH = 16;
 
     /**
-     * 为每个用户生成独立随机盐。
+     * Generates an independent random salt for each user.
      */
     public static byte[] generateSalt() {
-        // 每次注册都生成独立盐，避免相同密码在数据库中出现相同摘要。
+        // Generate an independent salt for each registration so identical passwords do not produce identical database hashes.
         byte[] salt = new byte[SALT_LENGTH];
         new SecureRandom().nextBytes(salt);
         return salt;
     }
 
     /**
-     * 使用 PBKDF2WithHmacSHA256 生成加盐密码摘要。
+     * Generates a salted password hash with PBKDF2WithHmacSHA256.
      */
     public static byte[] hashPassword(String password, byte[] salt) {
         try {
-            // PBEKeySpec 接收字符数组密码、盐、迭代次数和输出长度，由工厂完成密钥派生。
+            // PBEKeySpec receives the password char array, salt, iteration count, and output length; the factory performs key derivation.
             PBEKeySpec spec = new PBEKeySpec(password.toCharArray(), salt, ITERATIONS, KEY_LENGTH);
             SecretKeyFactory factory = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256");
             return factory.generateSecret(spec).getEncoded();
         } catch (Exception e) {
-            throw new RuntimeException("生成密码摘要失败", e);
+            throw new RuntimeException("Failed to generate password hash", e);
         }
     }
 
     /**
-     * 校验用户输入密码是否与数据库中的盐和摘要匹配。
+     * Checks whether the user-entered password matches the database salt and hash.
      */
     public static boolean matches(String password, byte[] salt, byte[] expectedHash) {
-        // 用同一盐值重新计算摘要，再与数据库保存的摘要比较。
+        // Recompute the hash with the same salt and compare it with the stored database hash.
         byte[] actualHash = hashPassword(password, salt);
         return Arrays.equals(actualHash, expectedHash);
     }

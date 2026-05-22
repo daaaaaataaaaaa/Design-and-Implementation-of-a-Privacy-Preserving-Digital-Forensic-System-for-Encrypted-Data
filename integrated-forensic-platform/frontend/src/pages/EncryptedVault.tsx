@@ -13,16 +13,23 @@ import {
   Search,
   X
 } from "lucide-react";
-import { authHeader, DocumentDetail, DocumentSummary, jsonRequest, SE_API, SpreadsheetPreview } from "../lib/api";
-
-type AuthResponse = {
-  token: string;
-  username: string;
-};
+import {
+  authHeader,
+  DocumentDetail,
+  DocumentSummary,
+  jsonRequest,
+  SE_API,
+  SpreadsheetPreview
+} from "../lib/api";
 
 type NoticeTone = "info" | "success" | "danger";
 type PendingAction = "idle" | "auth" | "load" | "upload" | "search" | "open" | "delete" | "download" | "rebuild";
 type VaultTab = "upload" | "search" | "documents";
+type EncryptedVaultProps = {
+  authToken: string;
+  currentUser: string;
+  onSessionExpired: () => void;
+};
 type PreviewFile = {
   url: string;
   mimeType: string;
@@ -157,20 +164,31 @@ function parseDownloadFileName(header: string | null, fallback: string) {
 }
 
 function countKeywordMatches(value: string, keyword: string) {
-  const normalizedKeyword = keyword.trim().toLowerCase();
-  if (!normalizedKeyword) return 0;
+  const terms = splitSearchTerms(keyword);
+  if (!terms.length) return 0;
   const lowerValue = value.toLowerCase();
-  let cursor = 0;
   let count = 0;
 
-  while (cursor < value.length) {
-    const matchIndex = lowerValue.indexOf(normalizedKeyword, cursor);
-    if (matchIndex < 0) break;
-    count++;
-    cursor = matchIndex + normalizedKeyword.length;
+  for (const term of terms) {
+    let cursor = 0;
+    while (cursor < value.length) {
+      const matchIndex = lowerValue.indexOf(term, cursor);
+      if (matchIndex < 0) break;
+      count++;
+      cursor = matchIndex + term.length;
+    }
   }
 
   return count;
+}
+
+function splitSearchTerms(value: string) {
+  return Array.from(new Set(value
+    .trim()
+    .toLowerCase()
+    .split(/[\s,;，；]+/)
+    .map((term) => term.trim())
+    .filter((term) => term.length >= 2)));
 }
 
 function highlightMatches(
@@ -178,25 +196,33 @@ function highlightMatches(
   keyword: string,
   options: { activeIndex?: number; startIndex?: number; trackMatches?: boolean } = {}
 ): ReactNode {
-  const normalizedKeyword = keyword.trim();
-  if (!normalizedKeyword) return value;
+  const terms = splitSearchTerms(keyword).sort((left, right) => right.length - left.length);
+  if (!terms.length) return value;
 
   const lowerValue = value.toLowerCase();
-  const lowerKeyword = normalizedKeyword.toLowerCase();
   const parts: ReactNode[] = [];
   let cursor = 0;
   let localMatchIndex = 0;
 
   while (cursor < value.length) {
-    const matchIndex = lowerValue.indexOf(lowerKeyword, cursor);
-    if (matchIndex < 0) {
+    let matchIndex = -1;
+    let matchedTerm = "";
+    for (const term of terms) {
+      const nextIndex = lowerValue.indexOf(term, cursor);
+      if (nextIndex >= 0 && (matchIndex < 0 || nextIndex < matchIndex || (nextIndex === matchIndex && term.length > matchedTerm.length))) {
+        matchIndex = nextIndex;
+        matchedTerm = term;
+      }
+    }
+
+    if (matchIndex < 0 || !matchedTerm) {
       parts.push(value.slice(cursor));
       break;
     }
     if (matchIndex > cursor) {
       parts.push(value.slice(cursor, matchIndex));
     }
-    const matchText = value.slice(matchIndex, matchIndex + normalizedKeyword.length);
+    const matchText = value.slice(matchIndex, matchIndex + matchedTerm.length);
     const globalMatchIndex = (options.startIndex ?? 0) + localMatchIndex;
     const active = options.activeIndex === globalMatchIndex;
     parts.push(
@@ -208,7 +234,7 @@ function highlightMatches(
         {matchText}
       </mark>
     );
-    cursor = matchIndex + normalizedKeyword.length;
+    cursor = matchIndex + matchedTerm.length;
     localMatchIndex++;
   }
 
@@ -366,10 +392,8 @@ function PreviewContent({
   );
 }
 
-export function EncryptedVault() {
-  const [token, setToken] = useState(localStorage.getItem("se_token") ?? "");
-  const [username, setUsername] = useState(localStorage.getItem("se_user") ?? "demo");
-  const [password, setPassword] = useState("demo123");
+export function EncryptedVault({ authToken, currentUser, onSessionExpired }: EncryptedVaultProps) {
+  const [token, setToken] = useState(authToken);
   const [activeTab, setActiveTab] = useState<VaultTab>("upload");
   const [documents, setDocuments] = useState<DocumentSummary[]>([]);
   const [searchResults, setSearchResults] = useState<DocumentSummary[]>([]);
@@ -386,7 +410,7 @@ export function EncryptedVault() {
   const [keyword, setKeyword] = useState("");
   const [lastSearchKeyword, setLastSearchKeyword] = useState("");
   const [actionDocId, setActionDocId] = useState("");
-  const [message, setMessage] = useState("Please login or register before using the encrypted vault.");
+  const [message, setMessage] = useState(`Encrypted vault connected as ${currentUser}.`);
   const [noticeTone, setNoticeTone] = useState<NoticeTone>("info");
   const [pendingAction, setPendingAction] = useState<PendingAction>("idle");
   const [importMenuOpen, setImportMenuOpen] = useState(false);
@@ -426,15 +450,16 @@ export function EncryptedVault() {
 
   function normalizeSessionError(reason: string) {
     if (/invalid bearer|unauthorized|401/i.test(reason)) {
-      logout("Login session expired. Please login again.");
-      return "Login session expired. Please login again.";
+      disconnectVault("Encrypted vault session expired. Please sign in again.");
+      onSessionExpired();
+      return "Encrypted vault session expired. Please sign in again.";
     }
     return reason;
   }
 
   function requireLogin(action: string) {
     if (token) return true;
-    showMessage(`Please login before ${action}. API: ${SE_API}`, "danger");
+    showMessage(`Sign in again before ${action}. API: ${SE_API}`, "danger");
     return false;
   }
 
@@ -445,7 +470,7 @@ export function EncryptedVault() {
     setActivePreviewMatchIndex(0);
   }
 
-  function logout(nextMessage = "Logged out.") {
+  function disconnectVault(nextMessage = "Disconnected.") {
     setToken("");
     setDocuments([]);
     setSearchResults([]);
@@ -455,39 +480,14 @@ export function EncryptedVault() {
     setSelectedDocIds(new Set());
     setActionDocId("");
     localStorage.removeItem("se_token");
+    localStorage.removeItem("se_user");
     showMessage(nextMessage, "info");
   }
 
-  async function authenticate(mode: "login" | "register") {
-    if (!username.trim() || !password.trim()) {
-      showMessage("Username and password are required.", "danger");
-      return;
-    }
-
-    setPendingAction("auth");
-    showMessage(mode === "login" ? "Logging in..." : "Registering user and key material...", "info");
-    try {
-      const response = await jsonRequest<AuthResponse>(`${SE_API}/api/se/auth/${mode}`, {
-        method: "POST",
-        body: JSON.stringify({ username: username.trim(), password })
-      });
-      setToken(response.token);
-      setUsername(response.username);
-      localStorage.setItem("se_token", response.token);
-      localStorage.setItem("se_user", response.username);
-      showMessage(mode === "login" ? "Login successful." : "Registration successful.", "success");
-      await loadDocuments(response.token, true);
-    } catch (error) {
-      showMessage(`${mode === "login" ? "Login" : "Register"} failed: ${describeError(error)}`, "danger");
-    } finally {
-      setPendingAction("idle");
-    }
-  }
-
-  async function loadDocuments(nextToken = token, quiet = false) {
+  async function loadDocuments(nextToken = token, quiet = false): Promise<boolean> {
     if (!nextToken) {
-      showMessage("Please login before refreshing documents.", "danger");
-      return;
+      showMessage("Encrypted vault is not connected yet.", "danger");
+      return false;
     }
 
     if (!quiet) {
@@ -500,8 +500,10 @@ export function EncryptedVault() {
       });
       setDocuments(response);
       if (!quiet) showMessage(`Loaded ${response.length} document(s).`, "success");
+      return true;
     } catch (error) {
       showMessage(`Refresh failed: ${normalizeSessionError(describeError(error))}`, "danger");
+      return false;
     } finally {
       if (!quiet) setPendingAction("idle");
     }
@@ -587,11 +589,12 @@ export function EncryptedVault() {
 
   async function searchDocuments() {
     if (!requireLogin("searching documents")) return;
-    const normalizedKeyword = keyword.trim().toLowerCase();
-    if (!normalizedKeyword) {
+    const searchTerms = splitSearchTerms(keyword);
+    if (!searchTerms.length) {
       showMessage("Please enter a keyword.", "danger");
       return;
     }
+    const normalizedKeyword = searchTerms.join(" ");
 
     setPendingAction("search");
     showMessage(`Searching for "${normalizedKeyword}"...`, "info");
@@ -605,14 +608,33 @@ export function EncryptedVault() {
       });
       setDocuments(latestDocuments);
 
-      const fallbackMatches = latestDocuments.filter((document) => {
-        return document.docId.toLowerCase().includes(normalizedKeyword)
-          || document.fileName.toLowerCase().includes(normalizedKeyword);
-      });
       const merged = new Map<string, DocumentSummary>();
-      for (const document of encryptedMatches) merged.set(document.docId, document);
-      for (const document of fallbackMatches) merged.set(document.docId, document);
-      const results = Array.from(merged.values());
+      for (const document of encryptedMatches) {
+        merged.set(document.docId, {
+          ...document,
+          matchCount: document.matchCount ?? document.matchedKeywords?.length ?? 0,
+          matchedKeywords: document.matchedKeywords ?? []
+        });
+      }
+      for (const document of latestDocuments) {
+        const matchedKeywords = searchTerms.filter((term) => {
+          return document.docId.toLowerCase().includes(term)
+            || document.fileName.toLowerCase().includes(term);
+        });
+        if (!matchedKeywords.length) continue;
+
+        const existing = merged.get(document.docId);
+        const combinedKeywords = Array.from(new Set([...(existing?.matchedKeywords ?? []), ...matchedKeywords]));
+        merged.set(document.docId, {
+          ...(existing ?? document),
+          matchCount: Math.max(existing?.matchCount ?? 0, combinedKeywords.length),
+          matchedKeywords: combinedKeywords
+        });
+      }
+      const results = Array.from(merged.values()).sort((left, right) => {
+        return (right.matchCount ?? 0) - (left.matchCount ?? 0)
+          || left.docId.localeCompare(right.docId);
+      });
       setSearchResults(results);
       setHasSearched(true);
       setLastSearchKeyword(normalizedKeyword);
@@ -871,7 +893,7 @@ export function EncryptedVault() {
   }
 
   function selectSingleDocument(document: DocumentSummary) {
-    applyDocumentSelection(new Set([document.docId]));
+    toggleDocumentSelection(document);
   }
 
   function toggleDocumentSelection(document: DocumentSummary) {
@@ -885,10 +907,21 @@ export function EncryptedVault() {
   }
 
   useEffect(() => {
+    setToken(authToken);
+    showMessage(`Encrypted vault connected as ${currentUser}.`, "info");
+  }, [authToken, currentUser]);
+
+  useEffect(() => {
     if (token) {
-      loadDocuments(token, true);
+      loadDocuments(token, true).then((loaded) => {
+        if (loaded) {
+          showMessage(`Encrypted vault connected as ${currentUser}.`, "success");
+        }
+      });
+    } else {
+      showMessage("Encrypted vault is not connected. Sign in again to continue.", "danger");
     }
-  }, [token]);
+  }, [token, currentUser]);
 
   useEffect(() => {
     return () => {
@@ -934,39 +967,21 @@ export function EncryptedVault() {
       <div className="page-header">
         <div>
           <p className="eyebrow">Searchable encryption facade</p>
-          <h1>加密证据库</h1>
+          <h1>Encrypted Evidence Vault</h1>
+        </div>
+        <div className="se-header-status" aria-live="polite">
+          <span className={loggedIn ? "se-status-pill success" : "se-status-pill"}>
+            {loggedIn ? `Connected: ${currentUser}` : "Not connected"}
+          </span>
+          {!loggedIn && (
+            <button className="se-button primary" type="button" onClick={onSessionExpired} disabled={busy}>
+              Sign In
+            </button>
+          )}
         </div>
       </div>
 
       <div className="se-module">
-        <div className="se-session-row">
-          {loggedIn ? (
-            <>
-              <span>Current User: {username}</span>
-              <button className="se-button danger" type="button" onClick={() => logout()} disabled={busy}>
-                Logout
-              </button>
-            </>
-          ) : (
-            <form className="se-login-form" onSubmit={(event) => { event.preventDefault(); authenticate("login"); }}>
-              <label>
-                Username
-                <input value={username} onChange={(event) => setUsername(event.target.value)} />
-              </label>
-              <label>
-                Password
-                <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} />
-              </label>
-              <button className="se-button primary" type="submit" disabled={pendingAction === "auth"}>
-                {pendingAction === "auth" ? "Working..." : "Login"}
-              </button>
-              <button className="se-button secondary" type="button" onClick={() => authenticate("register")} disabled={pendingAction === "auth"}>
-                Register
-              </button>
-            </form>
-          )}
-        </div>
-
         <nav className="se-tabs" aria-label="Searchable encryption sections">
           {[
             ["upload", "Upload"],
@@ -1085,6 +1100,9 @@ export function EncryptedVault() {
                     <span>File: {highlightMatches(document.fileName, activeHighlightKeyword)}</span>
                     <span>Type: {document.mediaType}</span>
                     <span>Size: {formatBytes(document.fileSize)}</span>
+                    {document.matchCount ? (
+                      <span>Matched: {document.matchCount} keyword(s){document.matchedKeywords?.length ? ` (${document.matchedKeywords.join(", ")})` : ""}</span>
+                    ) : null}
                           <button className="se-link-button" type="button" onClick={() => openDocument(document.docId)}>
                             Open Preview
                           </button>

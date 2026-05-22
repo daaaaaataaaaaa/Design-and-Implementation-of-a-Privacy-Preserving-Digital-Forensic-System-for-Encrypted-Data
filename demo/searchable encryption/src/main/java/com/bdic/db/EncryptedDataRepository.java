@@ -21,30 +21,30 @@ import java.util.HexFormat;
 import java.util.Set;
 
 /**
- * 加密文档仓储。
+ * Encrypted document repository.
  *
- * <p>负责保存密文正文、维护关键词密文索引，并按当前用户隔离查询结果。对外暴露的 docId
- * 是用户输入的文档编号，数据库主键会额外混入用户名生成，避免不同用户使用相同 docId 时互相覆盖。</p>
+ * <p>Saves encrypted content, maintains encrypted keyword indexes, and isolates query results by current user. The public docId
+ * is the document ID entered by the user, while the database primary key additionally mixes in the username to prevent users with the same docId from overwriting each other.</p>
  */
 @SuppressWarnings({"SqlResolve", "SqlNoDataSourceInspection"})
 public class EncryptedDataRepository {
 
-    /** 数据库访问入口。 */
+    /** Database access entry point. */
     private final DatabaseManager databaseManager;
 
-    /** 注入数据库管理器，供仓储执行文档与索引操作。 */
+    /** Injects the database manager used by the repository for document and index operations. */
     public EncryptedDataRepository(DatabaseManager databaseManager) {
         this.databaseManager = databaseManager;
     }
 
     /**
-     * 保存或覆盖当前用户的文档，同时重建该文档的关键词索引。
+     * Saves or overwrites the current user's document while rebuilding its keyword index.
      */
     public void save(String username, EncryptedData encryptedData) {
         String displayDocId = requireText(encryptedData.getDocId(), "Document ID");
         String storageDocId = toStorageDocId(username, displayDocId);
 
-        // 使用 MySQL upsert 写文档主体：新文档插入，旧文档覆盖元数据和密文内容。
+        // Use MySQL upsert for the document body: insert new documents and overwrite metadata/encrypted content for existing documents.
         //noinspection SqlResolve,SqlNoDataSourceInspection
         String upsertDocumentSql = """
             INSERT INTO documents (doc_id, display_doc_id, owner_username, file_name, mime_type, media_type, file_size, encrypted_keyword_metadata, encrypted_content)
@@ -65,13 +65,13 @@ public class EncryptedDataRepository {
         String insertKeywordSql = "INSERT INTO keyword_index (doc_id, peks_ciphertext) VALUES (?, ?)";
 
         try (Connection connection = databaseManager.getConnection()) {
-            // 文档主体和关键词索引必须同成功同失败，因此显式开启事务。
+            // The document body and keyword index must succeed or fail together, so explicitly start a transaction.
             connection.setAutoCommit(false);
 
             try (PreparedStatement upsertDocument = connection.prepareStatement(upsertDocumentSql);
                  PreparedStatement deleteKeywords = connection.prepareStatement(deleteKeywordsSql);
                  PreparedStatement insertKeyword = connection.prepareStatement(insertKeywordSql)) {
-                // 先保存文档主体，包括用户可见 ID、文件元数据和加密内容。
+                // Save the document body first, including user-visible ID, file metadata, and encrypted content.
                 upsertDocument.setString(1, storageDocId);
                 upsertDocument.setString(2, displayDocId);
                 upsertDocument.setString(3, username);
@@ -83,14 +83,14 @@ public class EncryptedDataRepository {
                 upsertDocument.setBytes(9, encryptedData.getEncryptedContent());
                 upsertDocument.executeUpdate();
 
-                // 文档更新时先删除旧索引，再写入新关键词密文，保证搜索结果与最新内容一致。
+                // On document update, delete old indexes before writing new keyword ciphertext so search results match the latest content.
                 deleteKeywords.setString(1, storageDocId);
                 deleteKeywords.executeUpdate();
 
                 List<byte[]> ciphertexts = encryptedData.getPeksCiphertexts() == null
                         ? List.of()
                         : encryptedData.getPeksCiphertexts();
-                // 关键词密文可能很多，使用 batch 减少数据库往返次数。
+                // There may be many keyword ciphertexts; use batches to reduce database round trips.
                 for (byte[] peksCiphertext : ciphertexts) {
                     insertKeyword.setString(1, storageDocId);
                     insertKeyword.setBytes(2, peksCiphertext);
@@ -98,7 +98,7 @@ public class EncryptedDataRepository {
                 }
                 insertKeyword.executeBatch();
 
-                // 所有步骤成功后提交事务，保证客户端搜索能看到完整一致的索引。
+                // Commit after all steps succeed so client search sees a complete and consistent index.
                 connection.commit();
             } catch (SQLException e) {
                 connection.rollback();
@@ -112,7 +112,7 @@ public class EncryptedDataRepository {
     }
 
     /**
-     * 根据客户端传来的陷门搜索当前用户可访问的密文文档。
+     * Searches encrypted documents accessible to the current user with the trapdoor sent by the client.
      */
     public List<EncryptedData> searchByTrapdoor(String username, byte[] trapdoor) {
         //noinspection SqlResolve,SqlNoDataSourceInspection
@@ -128,7 +128,7 @@ public class EncryptedDataRepository {
 
         try (Connection connection = databaseManager.getConnection();
              PreparedStatement statement = connection.prepareStatement(searchSql)) {
-            // 服务端只拿陷门和索引密文执行 PEKS 测试，不需要解开明文关键词。
+            // The server performs PEKS tests only with trapdoors and index ciphertext; it never decrypts plaintext keywords.
             statement.setString(1, username);
 
             try (ResultSet resultSet = statement.executeQuery()) {
@@ -140,7 +140,7 @@ public class EncryptedDataRepository {
                 }
             }
 
-            // 搜索阶段按内部 ID 二次加载结果，便于控制是否携带大体积正文。
+            // During search, load results again by internal ID so the code can control whether large content bodies are included.
             return loadDocumentsByStorageIds(connection, username, new ArrayList<>(matchedStorageDocIds), true);
         } catch (SQLException e) {
             throw new RuntimeException("Failed to search encrypted documents", e);
@@ -191,7 +191,7 @@ public class EncryptedDataRepository {
     }
 
     /**
-     * 获取当前用户的文档摘要列表，不返回密文正文。
+     * Gets the current user's document summary list without returning encrypted body content.
      */
     public List<DocumentSummary> listDocuments(String username) {
         //noinspection SqlResolve,SqlNoDataSourceInspection
@@ -216,7 +216,7 @@ public class EncryptedDataRepository {
             statement.setString(1, username);
             try (ResultSet resultSet = statement.executeQuery()) {
                 while (resultSet.next()) {
-                    // created_at 可能来自历史数据或测试数据，转 LocalDateTime 前先判空。
+                    // created_at may come from historical or test data, so check for null before converting to LocalDateTime.
                     Timestamp createdAt = resultSet.getTimestamp("created_at");
                     LocalDateTime time = createdAt == null ? null : createdAt.toLocalDateTime();
                     summaries.add(new DocumentSummary(
@@ -237,12 +237,12 @@ public class EncryptedDataRepository {
     }
 
     /**
-     * 根据用户可见 docId 查询完整密文文档，用于下载、重建索引等操作。
+     * Finds the full encrypted document by user-visible docId for download, index rebuild, and similar operations.
      */
     public EncryptedData findByOwnerAndDocId(String username, String docId) {
         String displayDocId = requireText(docId, "Document ID");
         String storageDocId = toStorageDocId(username, displayDocId);
-        // 兼容新旧 ID：优先用用户名哈希后的内部 ID，也接受历史直接保存的 docId。
+        // Support new and old IDs: prefer the username-hashed internal ID, but also accept historically saved raw docIds.
         //noinspection SqlResolve,SqlNoDataSourceInspection
         String sql = """
             SELECT doc_id AS storage_doc_id,
@@ -281,12 +281,12 @@ public class EncryptedDataRepository {
     }
 
     /**
-     * 删除当前用户指定文档。删除文档会通过外键级联删除关键词索引。
+     * Deletes the specified document for the current user. Document deletion cascades keyword index deletion through foreign keys.
      */
     public boolean deleteByOwnerAndDocId(String username, String docId) {
         String displayDocId = requireText(docId, "Document ID");
         String storageDocId = toStorageDocId(username, displayDocId);
-        // 删除文档主体即可，keyword_index 通过外键 ON DELETE CASCADE 自动清理。
+        // Deleting the document body is enough; keyword_index is automatically cleaned by ON DELETE CASCADE foreign keys.
         //noinspection SqlResolve,SqlNoDataSourceInspection
         String sql = """
             DELETE FROM documents
@@ -307,12 +307,12 @@ public class EncryptedDataRepository {
     }
 
     /**
-     * 生成数据库内部文档 ID。用户名参与哈希，保证多用户同名文档彼此隔离。
+     * Generates the internal database document ID. The username participates in the hash to isolate same-named documents across users.
      */
     public static String toStorageDocId(String username, String displayDocId) {
         String normalizedUsername = requireText(username, "Username");
         String normalizedDocId = requireText(displayDocId, "Document ID");
-        // 使用用户名和展示用文档 ID 共同生成稳定哈希，避免不同用户间的主键冲突。
+        // Generate a stable hash from the username and display document ID to avoid primary-key conflicts between users.
         byte[] input = (normalizedUsername + "\u0000" + normalizedDocId).getBytes(StandardCharsets.UTF_8);
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
@@ -323,10 +323,10 @@ public class EncryptedDataRepository {
     }
 
     /**
-     * 将结果集的一行转换为可传输给客户端的文档对象。
+     * Converts one result-set row into a document object transferable to the client.
      */
     private EncryptedData mapDocument(Connection connection, ResultSet resultSet, String storageDocId) throws SQLException {
-        // 完整文档会带回加密正文和关键词密文，主要用于下载或重建索引。
+        // Full documents include encrypted content and keyword ciphertexts, mainly for download or index rebuilding.
         return new EncryptedData(
                 resultSet.getString("display_doc_id"),
                 resultSet.getString("file_name"),
@@ -340,13 +340,13 @@ public class EncryptedDataRepository {
     }
 
     /**
-     * 搜索结果只返回界面展示真正需要的数据。
-     * 对图片/音视频等二进制文件，不回传整份加密内容，避免一次搜索把大量 blob 推到 socket 上。
+     * Search results return only the data actually needed by the UI.
+     * For binary files such as images or audio/video, the full encrypted content is not returned to avoid pushing many large blobs through the socket in one search.
      */
     private EncryptedData mapSearchDocument(ResultSet resultSet) throws SQLException {
         String mediaType = resultSet.getString("media_type");
         boolean includeEncryptedContent = isTextMediaType(mediaType);
-        // 文本搜索结果可直接预览，二进制搜索结果只返回元数据以节省网络和内存。
+        // Text search results can be previewed directly, while binary search results return only metadata to save network and memory.
         return new EncryptedData(
                 resultSet.getString("display_doc_id"),
                 resultSet.getString("file_name"),
@@ -360,7 +360,7 @@ public class EncryptedDataRepository {
     }
 
     /**
-     * 根据内部文档 ID 列表读取完整文档详情，避免搜索阶段直接把所有密文正文扫入内存。
+     * Reads full document details by internal document ID list, avoiding loading all encrypted bodies into memory during search.
      */
     private List<EncryptedData> loadDocumentsByStorageIds(Connection connection, String username, List<String> storageDocIds, boolean lightweightSearchResult) throws SQLException {
         if (storageDocIds.isEmpty()) {
@@ -386,7 +386,7 @@ public class EncryptedDataRepository {
         List<EncryptedData> documents = new ArrayList<>();
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
             for (String storageDocId : storageDocIds) {
-                // 逐个 ID 加载以保持 searchSql 返回的排序，并避免拼接动态 IN 子句。
+                // Load IDs one by one to preserve the ordering returned by searchSql and avoid dynamic IN clause construction.
                 statement.setString(1, username);
                 statement.setString(2, storageDocId);
                 try (ResultSet resultSet = statement.executeQuery()) {
@@ -402,14 +402,14 @@ public class EncryptedDataRepository {
     }
 
     /**
-     * 读取某个文档下的全部关键词密文。
+     * Reads all keyword ciphertexts for a document.
      */
     private List<byte[]> findKeywordsByStorageDocId(Connection connection, String storageDocId) throws SQLException {
         //noinspection SqlResolve,SqlNoDataSourceInspection
         String sql = "SELECT peks_ciphertext FROM keyword_index WHERE doc_id = ?";
         List<byte[]> ciphertexts = new ArrayList<>();
 
-        // 下载完整文档或重建索引时需要把已有关键词密文一起带回客户端。
+        // Full document download or index rebuild needs to return existing keyword ciphertexts to the client.
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setString(1, storageDocId);
 
@@ -423,16 +423,16 @@ public class EncryptedDataRepository {
         return ciphertexts;
     }
 
-    /** 判断搜索结果是否需要携带密文正文。 */
+    /** Checks whether a search result needs to include encrypted body content. */
     private static boolean isTextMediaType(String mediaType) {
         return mediaType == null || mediaType.isBlank() || "text".equalsIgnoreCase(mediaType);
     }
 
     /**
-     * 校验必填字符串，并统一去除首尾空白。
+     * Validates required strings and consistently trims surrounding whitespace.
      */
     private static String requireText(String value, String fieldName) {
-        // Objects.requireNonNull 先拦截 null，再统一 trim，保证 ID 和用户名没有首尾空白。
+        // Objects.requireNonNull catches null first, then trim ensures IDs and usernames have no surrounding whitespace.
         String normalized = Objects.requireNonNull(value, fieldName + " is required").trim();
         if (normalized.isEmpty()) {
             throw new IllegalArgumentException(fieldName + " is required");

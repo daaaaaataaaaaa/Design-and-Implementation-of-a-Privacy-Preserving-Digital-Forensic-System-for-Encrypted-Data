@@ -14,47 +14,47 @@ import java.util.List;
 import java.util.function.Consumer;
 
 /**
- * 上传页控制器：负责上传相关 UI 与异步上传流程。
+ * Upload page controller for upload-related UI and asynchronous upload workflow.
  */
 public class UploadPanelController {
 
-    /** 主窗口，用于弹窗和原生文件选择器挂靠。 */
+    /** Main window used as the owner for dialogs and native file choosers. */
     private final JFrame owner;
-    /** 与服务端通信的客户端。 */
+    /** Client used to communicate with the server. */
     private final DocumentServiceClient serviceClient;
-    /** 本地文档加密和关键词构建服务。 */
+    /** Service for local document encryption and keyword index building. */
     private final DocumentOperationService operationService;
-    /** 当前用户的本地密钥集合。 */
+    /** Local key bundle for the current user. */
     private final ClientKeyManager.KeyBundle keyBundle;
-    /** 上传成功后刷新文档列表的回调。 */
+    /** Callback that refreshes the document list after upload succeeds. */
     private final Runnable refreshDocumentsAction;
 
-    /** 当前已选择准备批量上传的文件路径。 */
+    /** Currently selected file paths prepared for batch upload. */
     private final List<Path> selectedFilePaths = new ArrayList<>();
-    /** 全局忙碌状态管理器，主窗口装配完成后注入。 */
+    /** Global busy-state manager, injected after the main window is assembled. */
     private UiBusyStateManager busyStateManager;
 
-    /** 自动生成的文档 ID 输入框，纯文本上传时使用。 */
+    /** Auto-generated document ID input field used for plaintext uploads. */
     private JTextField docIdField;
-    /** 用户输入的文档描述，会进入加密关键词元数据。 */
+    /** User-entered document description, stored in encrypted keyword metadata. */
     private JTextField descriptionField;
-    /** 纯文本上传内容输入区。 */
+    /** Plaintext upload content input area. */
     private JTextArea plainTextContentArea;
-    /** 展示当前文件选择状态。 */
+    /** Displays the current file selection status. */
     private JLabel selectedFileLabel;
-    /** 导入文件或文件夹菜单按钮。 */
+    /** Menu button for importing files or folders. */
     private JButton importButton;
-    /** 清空已选择文件按钮。 */
+    /** Button for clearing selected files. */
     private JButton clearFileButton;
-    /** 触发上传按钮。 */
+    /** Button that triggers upload. */
     private JButton uploadButton;
-    /** 上传页状态文本。 */
+    /** Upload page status text. */
     private JLabel uploadStatusLabel;
-    /** 上传页进度条。 */
+    /** Upload page progress bar. */
     private JProgressBar uploadProgressBar;
 
     /**
-     * 创建上传页控制器。
+     * Creates the upload page controller.
      */
     public UploadPanelController(
             JFrame owner,
@@ -71,13 +71,13 @@ public class UploadPanelController {
     }
 
     /**
-     * 创建上传页完整 UI。
+     * Creates the full upload page UI.
      */
     public JPanel createPanel() {
         JPanel uploadPanel = new JPanel(new BorderLayout(10, 10));
         uploadPanel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
 
-        // 顶部表单包含文档 ID、文件选择状态和导入动作。
+        // The top form contains the document ID, file selection status, and import actions.
         JPanel uploadFormPanel = new JPanel(new GridLayout(3, 2, 5, 5));
         uploadFormPanel.add(new JLabel("Document ID:"));
         docIdField = new JTextField();
@@ -104,7 +104,7 @@ public class UploadPanelController {
 
         uploadPanel.add(uploadFormPanel, BorderLayout.NORTH);
 
-        // 中间区域同时支持输入描述和粘贴纯文本正文。
+        // The middle area supports both entering a description and pasting plaintext body content.
         descriptionField = new JTextField();
 
         plainTextContentArea = new JTextArea(14, 20);
@@ -125,7 +125,7 @@ public class UploadPanelController {
         ), BorderLayout.CENTER);
         uploadPanel.add(centerPanel, BorderLayout.CENTER);
 
-        // 底部放置进度状态和上传按钮。
+        // The bottom area contains progress status and the upload button.
         uploadButton = new JButton("Upload Document");
         uploadButton.addActionListener(e -> handleUpload());
         UiComponentFactory.stylePrimaryButton(uploadButton);
@@ -149,22 +149,22 @@ public class UploadPanelController {
         return uploadPanel;
     }
 
-    /** 注入忙碌状态管理器。 */
+    /** Injects the busy-state manager. */
     public void setBusyStateManager(UiBusyStateManager busyStateManager) {
         this.busyStateManager = busyStateManager;
     }
 
-    /** 返回上传页状态标签，供忙碌状态管理器统一更新。 */
+    /** Returns the upload page status label for unified busy-state updates. */
     public JLabel getStatusLabel() {
         return uploadStatusLabel;
     }
 
-    /** 返回上传页进度条，供忙碌状态管理器统一显示/隐藏。 */
+    /** Returns the upload page progress bar for unified show/hide handling. */
     public JProgressBar getProgressBar() {
         return uploadProgressBar;
     }
 
-    /** 返回后台任务运行时需要禁用的上传页控件。 */
+    /** Returns upload page controls that must be disabled while background tasks run. */
     public List<JComponent> getBusySensitiveComponents() {
         List<JComponent> components = new ArrayList<>();
         components.add(uploadButton);
@@ -176,7 +176,7 @@ public class UploadPanelController {
     }
 
     /**
-     * 响应上传按钮：校验输入、锁定 UI，并启动后台上传任务。
+     * Handles the upload button: validates input, locks the UI, and starts a background upload task.
      */
     private void handleUpload() {
         String description = descriptionField.getText();
@@ -193,7 +193,7 @@ public class UploadPanelController {
         final List<Path> filesToUpload = new ArrayList<>(selectedFilePaths);
         final String textDocId = docIdField.getText().trim();
         busyStateManager.setUploadBusy(true, initialUploadStatus(filesToUpload));
-        // SwingWorker 在后台线程执行加密和网络上传，done/process 回到 EDT 更新界面。
+        // SwingWorker performs encryption and network upload in the background, while done/process update the UI on the EDT.
         new SwingWorker<UploadTaskResult, String>() {
             @Override
             protected UploadTaskResult doInBackground() {
@@ -207,7 +207,7 @@ public class UploadPanelController {
 
             @Override
             protected void process(List<String> chunks) {
-                // publish 可能累计多条状态，只显示最新一条即可。
+                // publish may accumulate multiple statuses; displaying only the latest one is enough.
                 if (!chunks.isEmpty() && busyStateManager != null) {
                     busyStateManager.updateUploadStatus(chunks.get(chunks.size() - 1));
                 }
@@ -226,7 +226,7 @@ public class UploadPanelController {
                 if (result.clearInputs()) {
                     resetUploadForm();
                 }
-                // 先解除忙碌，再刷新列表或弹窗，避免用户觉得界面被卡住。
+                // Clear the busy state before refreshing the list or showing dialogs so the UI does not feel stuck.
                 if (busyStateManager != null) {
                     busyStateManager.setUploadBusy(false, " ");
                 }
@@ -244,7 +244,7 @@ public class UploadPanelController {
     }
 
     /**
-     * 根据当前选择执行纯文本上传或批量文件上传。
+     * Runs plaintext upload or batch file upload based on the current selection.
      */
     private UploadTaskResult performUpload(
             String textDocId,
@@ -254,7 +254,7 @@ public class UploadPanelController {
             Consumer<String> statusUpdater
     ) throws Exception {
         if (filesToUpload.isEmpty()) {
-            // 未选择文件时，把文本框内容当作一个 text/plain 文档上传。
+            // When no file is selected, upload the text box content as one text/plain document.
             statusUpdater.accept("Encrypting and uploading text content...");
             String docId = textDocId;
             DocumentOperationService.UploadContent uploadContent = operationService.resolveTextUploadContent(docId, plainTextContent);
@@ -276,7 +276,7 @@ public class UploadPanelController {
             statusUpdater.accept("Uploading (" + (i + 1) + "/" + filesToUpload.size() + "): " + fileName);
             String docId = DocumentIdGenerator.generate();
             try {
-                // 每个文件独立构建内容、加密、上传；单个失败不会终止整个批次。
+                // Each file is built, encrypted, and uploaded independently; one failure does not stop the whole batch.
                 DocumentOperationService.UploadContent uploadContent = operationService.resolveFileUploadContent(filePath);
                 ServerResponse response = uploadSingleDocument(docId, uploadContent, description);
                 if (response.isSuccess()) {
@@ -289,7 +289,7 @@ public class UploadPanelController {
             }
         }
 
-        // 批量上传结束后汇总成功数量和失败原因。
+        // After batch upload, summarize the success count and failure reasons.
         StringBuilder summary = new StringBuilder();
         summary.append("Batch upload finished.\n")
                 .append("Success: ").append(successCount).append('\n')
@@ -308,7 +308,7 @@ public class UploadPanelController {
     }
 
     /**
-     * 构建单个加密文档并发送给服务端。
+     * Builds one encrypted document and sends it to the server.
      */
     private ServerResponse uploadSingleDocument(String docId, DocumentOperationService.UploadContent uploadContent, String descriptionInput) throws Exception {
         EncryptedData data = operationService.buildEncryptedData(docId, uploadContent, descriptionInput, keyBundle.desKey(), keyBundle.peksPublicKey());
@@ -316,7 +316,7 @@ public class UploadPanelController {
     }
 
     /**
-     * 打开系统文件选择框，支持一次选择多个文件。
+     * Opens the system file chooser and supports selecting multiple files at once.
      */
     private void chooseFiles() {
         if (busyStateManager != null && busyStateManager.isBusy()) {
@@ -326,7 +326,7 @@ public class UploadPanelController {
         fileDialog.setMultipleMode(true);
         fileDialog.setVisible(true);
 
-        // FileDialog 返回 File 数组，将其转换成 Path 供后续 NIO 读取。
+        // FileDialog returns a File array; convert it to Path for later NIO reads.
         File[] selectedFiles = fileDialog.getFiles();
         if (selectedFiles == null || selectedFiles.length == 0) {
             return;
@@ -342,7 +342,7 @@ public class UploadPanelController {
     }
 
     /**
-     * 打开文件夹选择框，并收集文件夹下所有普通文件。
+     * Opens the folder chooser and collects all regular files under the folder.
      */
     private void chooseFolder() {
         if (busyStateManager != null && busyStateManager.isBusy()) {
@@ -362,7 +362,7 @@ public class UploadPanelController {
     }
 
     /**
-     * 在导入按钮下方弹出文件/文件夹导入菜单。
+     * Shows the file/folder import menu below the import button.
      */
     private void showImportMenu(Component invoker) {
         if (busyStateManager != null && busyStateManager.isBusy()) {
@@ -383,7 +383,7 @@ public class UploadPanelController {
     }
 
     /**
-     * 让弹出菜单字体和按钮当前缩放比例一致。
+     * Keeps the popup menu font aligned with the current button scaling ratio.
      */
     private void applyPopupMenuScale(JPopupMenu menu, Component invoker, JMenuItem... items) {
         Font targetFont = invoker.getFont();
@@ -404,20 +404,20 @@ public class UploadPanelController {
         }
     }
 
-    /** 清空当前文件选择。 */
+    /** Clears the current file selection. */
     private void clearSelectedFiles() {
         selectedFilePaths.clear();
         updateSelectedFilesLabel();
     }
 
-    /** 用新的文件路径集合替换当前选择。 */
+    /** Replaces the current selection with a new set of file paths. */
     private void replaceSelectedFiles(List<Path> paths) {
         selectedFilePaths.clear();
         selectedFilePaths.addAll(paths);
         updateSelectedFilesLabel();
     }
 
-    /** 根据已选择文件数量刷新界面提示。 */
+    /** Updates the UI prompt according to the selected file count. */
     private void updateSelectedFilesLabel() {
         if (selectedFileLabel == null) {
             return;
@@ -433,12 +433,12 @@ public class UploadPanelController {
         selectedFileLabel.setText(selectedFilePaths.size() + " files selected");
     }
 
-    /** 生成上传刚开始时的状态文本。 */
+    /** Generates the status text shown at upload start. */
     private String initialUploadStatus(List<Path> filesToUpload) {
         return filesToUpload.isEmpty() ? "Uploading text content..." : "Preparing " + filesToUpload.size() + " file(s)...";
     }
 
-    /** 上传成功后重置表单并生成新的文档 ID。 */
+    /** Resets the form after upload succeeds and generates a new document ID. */
     private void resetUploadForm() {
         docIdField.setText(DocumentIdGenerator.generate());
         descriptionField.setText("");
@@ -447,7 +447,7 @@ public class UploadPanelController {
     }
 
     /**
-     * 给上传面板绑定回车快捷上传；焦点在多行文本框内时保留换行行为。
+     * Binds Enter as an upload shortcut on the upload panel while preserving newline behavior inside multiline text areas.
      */
     private void registerEnterToUpload(JComponent root) {
         InputMap inputMap = root.getInputMap(JComponent.WHEN_ANCESTOR_OF_FOCUSED_COMPONENT);
@@ -466,13 +466,13 @@ public class UploadPanelController {
     }
 
     /**
-     * 上传后台任务的结果对象。
+     * Result object for upload background tasks.
      *
-     * @param title 弹窗标题。
-     * @param message 弹窗内容。
-     * @param messageType JOptionPane 消息类型。
-     * @param clearInputs 是否清空上传表单。
-     * @param refreshDocuments 是否刷新文档列表。
+     * @param title dialog title.
+     * @param message dialog content.
+     * @param messageType JOptionPane message type.
+     * @param clearInputs whether to clear the upload form.
+     * @param refreshDocuments whether to refresh the document list.
      */
     private record UploadTaskResult(
             String title,
@@ -481,7 +481,7 @@ public class UploadPanelController {
             boolean clearInputs,
             boolean refreshDocuments
     ) {
-        /** 创建上传失败结果。 */
+        /** Creates an upload failure result. */
         private static UploadTaskResult error(String message) {
             return new UploadTaskResult("Upload Result", message, JOptionPane.ERROR_MESSAGE, false, false);
         }

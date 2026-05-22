@@ -8,70 +8,108 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 
 /**
- * 用户仓储。
+ * User repository.
  *
- * <p>负责注册新用户、校验登录凭据，并将密码以“盐 + 摘要”的形式写入数据库。</p>
+ * <p>Registers new users, validates sign-in credentials, and stores passwords in "salt + hash" form in the database.</p>
  */
 public class UserRepository {
 
-    /** 数据库访问入口。 */
+    /** Database access entry point. */
     private final DatabaseManager databaseManager;
 
-    /** 注入数据库管理器，供仓储执行持久化操作。 */
+    /** Injects the database manager used by the repository for persistence operations. */
     public UserRepository(DatabaseManager databaseManager) {
         this.databaseManager = databaseManager;
     }
 
     /**
-     * 注册新用户；用户名已存在时返回 false。
+     * Registers a new user; returns false if the username already exists.
      */
     public boolean register(String username, String password) {
-        // 将用户名、密码摘要和盐值写入用户表。
+        // Write the username, password hash, and salt into the user table.
         String sql = "INSERT INTO users (username, password_hash, password_salt) VALUES (?, ?, ?)";
-        // 为每个用户生成独立盐值，并基于盐值计算密码摘要。
+        // Generate an independent salt for each user and calculate the password hash from it.
         byte[] salt = PasswordUtil.generateSalt();
         byte[] hash = PasswordUtil.hashPassword(password, salt);
 
         try (Connection connection = databaseManager.getConnection();
              PreparedStatement statement = connection.prepareStatement(sql)) {
-            // PreparedStatement 负责参数绑定，避免用户名或密码内容破坏 SQL 结构。
+            // PreparedStatement handles parameter binding so username or password content cannot break SQL structure.
             statement.setString(1, username);
             statement.setBytes(2, hash);
             statement.setBytes(3, salt);
             statement.executeUpdate();
             return true;
         } catch (SQLException e) {
-            // 主键或唯一索引冲突，说明用户名已经存在。
+            // A primary-key or unique-index conflict means the username already exists.
             if (e.getErrorCode() == 1062) {
                 return false;
             }
-            throw new RuntimeException("注册用户失败", e);
+            throw new RuntimeException("Failed to register user", e);
         }
     }
 
     /**
-     * 校验用户名和密码是否匹配。
+     * Checks whether the username and password match.
      */
     public boolean authenticate(String username, String password) {
-        // 根据用户名查询已保存的密码摘要和盐值。
+        // Look up the saved password hash and salt by username.
         String sql = "SELECT password_hash, password_salt FROM users WHERE username = ?";
 
         try (Connection connection = databaseManager.getConnection();
              PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setString(1, username);
             try (ResultSet resultSet = statement.executeQuery()) {
-                // 用户不存在时直接认证失败。
+                // Authentication fails directly when the user does not exist.
                 if (!resultSet.next()) {
                     return false;
                 }
 
-                // 读取数据库中的摘要与盐值，并校验输入密码。
+                // Read the database hash and salt, then validate the entered password.
                 byte[] passwordHash = resultSet.getBytes("password_hash");
                 byte[] passwordSalt = resultSet.getBytes("password_salt");
                 return PasswordUtil.matches(password, passwordSalt, passwordHash);
             }
         } catch (SQLException e) {
-            throw new RuntimeException("用户认证失败", e);
+            throw new RuntimeException("User authentication failed", e);
+        }
+    }
+
+    /**
+     * Checks whether a username already exists.
+     */
+    public boolean exists(String username) {
+        String sql = "SELECT 1 FROM users WHERE username = ?";
+
+        try (Connection connection = databaseManager.getConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, username);
+            try (ResultSet resultSet = statement.executeQuery()) {
+                return resultSet.next();
+            }
+        } catch (SQLException e) {
+            throw new RuntimeException("Failed to check user existence", e);
+        }
+    }
+
+    /**
+     * Replaces the stored password hash and salt for an existing user.
+     */
+    public void updatePassword(String username, String newPassword) {
+        String sql = "UPDATE users SET password_hash = ?, password_salt = ? WHERE username = ?";
+        byte[] salt = PasswordUtil.generateSalt();
+        byte[] hash = PasswordUtil.hashPassword(newPassword, salt);
+
+        try (Connection connection = databaseManager.getConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setBytes(1, hash);
+            statement.setBytes(2, salt);
+            statement.setString(3, username);
+            if (statement.executeUpdate() == 0) {
+                throw new RuntimeException("User not found");
+            }
+        } catch (SQLException e) {
+            throw new RuntimeException("Failed to update user password", e);
         }
     }
 }
