@@ -7,10 +7,11 @@ import { Detection } from "./pages/Detection";
 import { EncryptedVault } from "./pages/EncryptedVault";
 import { Explainability } from "./pages/Explainability";
 import { Login } from "./pages/Login";
+import { ModelAnalysis } from "./pages/ModelAnalysis";
 import { AuthResponse, changePlatformPassword, clearAuthSession, loadAuthSession, persistAuthSession } from "./lib/api";
 
 const ACTIVE_PAGE_KEY = "forensic_active_page";
-const pageKeys: PageKey[] = ["dashboard", "detection", "explainability", "vault", "blockchain"];
+const pageKeys: PageKey[] = ["dashboard", "detection", "model-analysis", "explainability", "vault", "blockchain"];
 
 function loadActivePage(): PageKey {
   const savedPage = sessionStorage.getItem(ACTIVE_PAGE_KEY);
@@ -111,6 +112,7 @@ export default function App() {
       >
         {page === "dashboard" && <Dashboard authToken={authSession.token} onNavigate={changePage} />}
         {page === "detection" && <Detection authToken={authSession.token} onNavigate={changePage} />}
+        {page === "model-analysis" && <ModelAnalysis />}
         {page === "explainability" && <Explainability authToken={authSession.token} />}
         {page === "vault" && (
           <EncryptedVault

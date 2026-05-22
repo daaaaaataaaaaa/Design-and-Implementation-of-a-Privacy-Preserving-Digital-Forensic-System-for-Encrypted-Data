@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 import type { ReactNode } from "react";
 
-export type PageKey = "dashboard" | "detection" | "explainability" | "vault" | "blockchain";
+export type PageKey = "dashboard" | "detection" | "model-analysis" | "explainability" | "vault" | "blockchain";
 
 type NavItem = {
   key: PageKey;
@@ -21,7 +21,8 @@ type NavItem = {
 
 const navItems: NavItem[] = [
   { key: "dashboard", label: "Workbench", icon: <Gauge size={18} /> },
-  { key: "detection", label: "Intrusion Detection", icon: <Network size={18} /> },
+  { key: "detection", label: "Forensic Data Analysis", icon: <Network size={18} /> },
+  { key: "model-analysis", label: "ML Model for Analysis", icon: <BarChart3 size={18} /> },
   { key: "explainability", label: "Explainable Forensics", icon: <BarChart3 size={18} /> },
   { key: "vault", label: "Encrypted Evidence Vault", icon: <LockKeyhole size={18} /> },
   { key: "blockchain", label: "On-Chain Evidence", icon: <Blocks size={18} /> }
