@@ -3,36 +3,36 @@ package com.bdic.model;
 import java.io.Serializable;
 
 /**
- * 登录/注册请求载荷。
+ * Sign-in/registration request payload.
  *
- * <p>该对象通过 TLS 通道传输，服务端收到后只保存密码摘要，不落库明文密码。</p>
+ * <p>This object is transferred through the TLS channel. After receiving it, the server stores only the password hash, not the plaintext password.</p>
  */
 public class LoginRequest implements Serializable {
-    /** Java 序列化版本号，保证对象流反序列化时结构兼容。 */
+    /** Java serialization version to keep object-stream deserialization compatible. */
     private static final long serialVersionUID = 1L;
 
-    /** 登录或注册时输入的用户名。 */
+    /** Username entered during sign-in or registration. */
     private final String username;
-    /** 登录或注册时输入的明文密码，只在 TLS 通道内临时传输。 */
+    /** Plaintext password entered during sign-in or registration, transmitted only temporarily inside the TLS channel. */
     private final String password;
 
     /**
-     * 构造认证请求。
+     * Constructs an authentication request.
      *
-     * @param username 用户名。
-     * @param password 明文密码；服务端收到后会立即转成加盐摘要。
+     * @param username username.
+     * @param password plaintext password; the server immediately converts it into a salted hash after receiving it.
      */
     public LoginRequest(String username, String password) {
         this.username = username;
         this.password = password;
     }
 
-    /** 返回用户名。 */
+    /** Returns the username. */
     public String getUsername() {
         return username;
     }
 
-    /** 返回明文密码，仅供服务端认证流程使用。 */
+    /** Returns the plaintext password, only for server-side authentication flow use. */
     public String getPassword() {
         return password;
     }

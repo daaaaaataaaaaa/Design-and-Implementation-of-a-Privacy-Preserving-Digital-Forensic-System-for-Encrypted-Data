@@ -7,6 +7,12 @@ import java.util.List;
 record AuthRequest(@NotBlank String username, @NotBlank String password) {
 }
 
+record ChangePasswordRequest(@NotBlank String currentPassword, @NotBlank String newPassword) {
+}
+
+record ResetPasswordRequest(@NotBlank String username, @NotBlank String recoveryCode, @NotBlank String newPassword) {
+}
+
 record AuthResponse(String token, String username) {
 }
 
@@ -36,6 +42,9 @@ record DeleteResponse(boolean deleted) {
 }
 
 record HealthResponse(String status, String service) {
+}
+
+record MlServiceStatusResponse(boolean running, String status, String apiUrl, String message) {
 }
 
 record DocumentDownload(byte[] content, String fileName, String mimeType) {

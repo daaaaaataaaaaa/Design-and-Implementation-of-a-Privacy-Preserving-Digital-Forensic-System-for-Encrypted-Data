@@ -9,37 +9,37 @@ import java.awt.event.ComponentAdapter;
 import java.awt.event.ComponentEvent;
 
 /**
- * 根据窗口大小动态缩放字体、按钮内边距与常见布局间距。
+ * Dynamically scales fonts, button padding, and common layout gaps according to window size.
  */
 public final class UiScaleManager {
 
-    /** 记录组件原始字体大小的 client property 键。 */
+    /** Client property key that records a component's original font size. */
     private static final String BASE_FONT_SIZE_KEY = "ui.scale.baseFontSize";
-    /** 记录按钮原始内边距的 client property 键。 */
+    /** Client property key that records a button's original padding. */
     private static final String BASE_BUTTON_MARGIN_KEY = "ui.scale.baseButtonMargin";
-    /** 记录组件原始边框的 client property 键。 */
+    /** Client property key that records a component's original border. */
     private static final String BASE_BORDER_KEY = "ui.scale.baseBorder";
-    /** 记录 FlowLayout 原始间距的 client property 键。 */
+    /** Client property key that records original FlowLayout gaps. */
     private static final String BASE_FLOW_GAP_KEY = "ui.scale.baseFlowGap";
-    /** 记录 GridLayout 原始间距的 client property 键。 */
+    /** Client property key that records original GridLayout gaps. */
     private static final String BASE_GRID_GAP_KEY = "ui.scale.baseGridGap";
-    /** 记录 Box.Filler 原始尺寸的 client property 键。 */
+    /** Client property key that records original Box.Filler sizes. */
     private static final String BASE_FILLER_SIZE_KEY = "ui.scale.baseFillerSize";
     private static final String MANAGER_KEY = "ui.scale.manager";
 
-    /** 被缩放管理器接管的主窗口。 */
+    /** Main window managed by the scaling manager. */
     private final JFrame frame;
-    /** 设计时基准宽度。 */
+    /** Design-time base width. */
     private final int baseWidth;
-    /** 设计时基准高度。 */
+    /** Design-time base height. */
     private final int baseHeight;
-    /** 允许的最小缩放比例。 */
+    /** Minimum allowed scale. */
     private final double minScale;
-    /** 允许的最大缩放比例。 */
+    /** Maximum allowed scale. */
     private final double maxScale;
 
     /**
-     * 创建缩放管理器，基准尺寸用于把当前窗口大小换算成比例。
+     * Creates the scaling manager; base dimensions are used to convert the current window size into a scale.
      */
     private UiScaleManager(JFrame frame, int baseWidth, int baseHeight, double minScale, double maxScale) {
         this.frame = frame;
@@ -50,7 +50,7 @@ public final class UiScaleManager {
     }
 
     /**
-     * 给窗口安装自适应缩放监听器，并立即应用一次当前比例。
+     * Installs adaptive scaling listeners on the window and immediately applies the current scale once.
      */
     public static void install(JFrame frame, int baseWidth, int baseHeight) {
         UiScaleManager manager = new UiScaleManager(frame, baseWidth, baseHeight, 1.0d, 1.8d);
@@ -85,7 +85,7 @@ public final class UiScaleManager {
     }
 
     /**
-     * 按当前窗口大小重新计算比例，并递归缩放窗口内组件。
+     * Recalculates the scale from the current window size and recursively scales components in the window.
      */
     private void applyCurrentScale() {
         double scale = calculateScale(frame.getWidth(), frame.getHeight());
@@ -95,7 +95,7 @@ public final class UiScaleManager {
     }
 
     /**
-     * 只缩放指定的动态子树，避免搜索结果等局部刷新时重算整个窗口。
+     * Scales only the specified dynamic subtree to avoid recalculating the whole window during local refreshes such as search results.
      */
     private void applyCurrentScale(Component root) {
         double scale = calculateScale(frame.getWidth(), frame.getHeight());
@@ -105,7 +105,7 @@ public final class UiScaleManager {
     }
 
     /**
-     * 使用宽高两个方向中较小的比例，避免某个方向内容被放得过大。
+     * Uses the smaller width/height scale to avoid oversized content in either direction.
      */
     private double calculateScale(int width, int height) {
         double widthScale = width / (double) baseWidth;
@@ -121,7 +121,7 @@ public final class UiScaleManager {
     }
 
     /**
-     * 深度遍历组件树，对每个 Swing 组件应用字体、边框和间距缩放。
+     * Traverses the component tree deeply and applies font, border, and spacing scale to each Swing component.
      */
     private void scaleRecursively(Component component, double scale) {
         if (component instanceof JComponent jComponent) {
@@ -140,7 +140,7 @@ public final class UiScaleManager {
     }
 
     /**
-     * 缩放组件字体；第一次遇到组件时保存原始字号，后续都基于原始值计算。
+     * Scales component fonts; saves the original font size on first encounter and uses it for later calculations.
      */
     private void scaleFont(JComponent component, double scale) {
         Font font = component.getFont();
@@ -160,7 +160,7 @@ public final class UiScaleManager {
     }
 
     /**
-     * 缩放按钮内边距，避免窗口放大后按钮文本显得拥挤。
+     * Scales button padding so button text does not feel cramped after window enlargement.
      */
     private void scaleButtonMargin(JComponent component, double scale) {
         if (!(component instanceof AbstractButton button)) {
@@ -182,7 +182,7 @@ public final class UiScaleManager {
     }
 
     /**
-     * 缩放组件边框中的留白部分。
+     * Scales whitespace inside component borders.
      */
     private void scaleBorder(JComponent component, double scale) {
         Border currentBorder = component.getBorder();
@@ -204,7 +204,7 @@ public final class UiScaleManager {
     }
 
     /**
-     * 递归缩放 EmptyBorder 和 CompoundBorder，其它边框保持原样。
+     * Recursively scales EmptyBorder and CompoundBorder while leaving other borders unchanged.
      */
     private Border scaleBorderValue(Border border, double scale) {
         if (border instanceof EmptyBorder emptyBorder) {
@@ -227,7 +227,7 @@ public final class UiScaleManager {
     }
 
     /**
-     * 缩放 FlowLayout 和 GridLayout 的水平/垂直间距。
+     * Scales horizontal and vertical gaps in FlowLayout and GridLayout.
      */
     private void scaleLayoutGap(JComponent component, double scale) {
         LayoutManager layoutManager = component.getLayout();
@@ -253,7 +253,7 @@ public final class UiScaleManager {
     }
 
     /**
-     * 缩放 Box.Filler 占位组件，保持界面留白随窗口一起变化。
+     * Scales Box.Filler spacer components so UI whitespace changes with the window.
      */
     private void scaleBoxFiller(JComponent component, double scale) {
         if (!(component instanceof Box.Filler filler)) {
@@ -271,7 +271,7 @@ public final class UiScaleManager {
         filler.changeShape(preferred, preferred, preferred);
     }
 
-    /** 按比例缩放 Insets 四个方向的值。 */
+    /** Scales all four Insets values by ratio. */
     private Insets scaleInsets(Insets baseInsets, double scale) {
         return new Insets(
                 scaled(baseInsets.top, scale),
@@ -281,12 +281,12 @@ public final class UiScaleManager {
         );
     }
 
-    /** 复制 Insets，防止后续修改影响原始边距记录。 */
+    /** Copies Insets so later changes do not affect the original padding record. */
     private Insets copyInsets(Insets insets) {
         return new Insets(insets.top, insets.left, insets.bottom, insets.right);
     }
 
-    /** 按比例缩放 Dimension 的宽高。 */
+    /** Scales a Dimension's width and height by ratio. */
     private Dimension scaleDimension(Dimension baseSize, double scale) {
         return new Dimension(
                 Math.max(0, scaled(baseSize.width, scale)),
@@ -294,7 +294,7 @@ public final class UiScaleManager {
         );
     }
 
-    /** 把单个整数尺寸按比例缩放并四舍五入。 */
+    /** Scales one integer size by ratio and rounds it. */
     private int scaled(int value, double scale) {
         return Math.max(0, (int) Math.round(value * scale));
     }

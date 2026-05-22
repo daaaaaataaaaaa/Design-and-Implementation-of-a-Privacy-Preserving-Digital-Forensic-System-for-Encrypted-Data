@@ -1,61 +1,61 @@
 # Privacy-Preserving Digital Forensic System for Encrypted Data
 
-这是一个面向加密数据取证的集成演示系统，包含入侵检测、可解释性证据、可搜索加密证据库和链上存证。前端使用 React/Vite，机器学习服务使用 FastAPI，搜索加密证据库使用 Spring Boot，并复用 `demo/searchable encryption` 中的 Java 加密、索引和数据库代码。
+This is an integrated demonstration system for encrypted-data digital forensics. It combines intrusion detection, explainable forensic evidence, a searchable encrypted evidence vault, and on-chain evidence anchoring. The frontend uses React/Vite, the machine-learning service uses FastAPI, the searchable encrypted evidence vault uses Spring Boot, and the platform reuses the Java encryption, indexing, and database code in `demo/searchable encryption`.
 
-## 功能概览
+## Feature Overview
 
-- 入侵检测：提交网络流量特征，返回预测结果、概率和证据哈希。
-- 可解释性取证：浏览 SHAP、LIME、Permutation Importance、PDP 等解释性资产和报告。
-- 加密证据库：上传文本、JSON、PDF、图片、Excel 等证据文件，服务端加密存储。
-- 可搜索加密：通过关键词搜索加密证据，不直接暴露明文内容。
-- 文件预览：支持图片、PDF、Excel 表格、JSON、纯文本等预览，并支持预览内关键词查找和高亮。
-- 链上存证：将证据哈希提交到 `EvidenceRegistry.sol` 合约，后续可验证完整性。
+- Intrusion detection: submit network-traffic features and receive the predicted class, probability, and evidence hash.
+- Explainable forensics: browse SHAP, LIME, Permutation Importance, PDP, and other explanation assets and reports.
+- Encrypted evidence vault: upload text, JSON, PDF, image, Excel, and other evidence files for encrypted server-side storage.
+- Searchable encryption: search encrypted evidence by keyword without directly exposing plaintext content.
+- File preview: preview images, PDFs, Excel tables, JSON, plain text, and more, with in-preview keyword search and highlighting.
+- On-chain evidence anchoring: submit evidence hashes to the `EvidenceRegistry.sol` contract so integrity can be verified later.
 
-## 目录结构
+## Directory Layout
 
 ```text
 .
-├── demo/
-│   ├── ML_Dataset/                         # 机器学习模型、XAI 图片和报告资产
-│   └── searchable encryption/              # 原 Java 可搜索加密实现
-├── integrated-forensic-platform/
-│   ├── backend/
-│   │   ├── ml-service/                     # FastAPI ML 服务，端口 8001
-│   │   └── searchable-encryption-api/      # Spring Boot 加密证据库 API，端口 8082
-│   ├── contracts/
-│   │   └── EvidenceRegistry.sol            # 链上存证智能合约
-│   ├── frontend/                           # React/Vite 前端，端口 5173
-│   └── docker-compose.yml                  # MySQL、ML 服务、SE API 的容器编排
-└── README.md
++-- demo/
+|   +-- ML_Dataset/                         # ML models, XAI images, and report assets
+|   +-- searchable encryption/              # Original Java searchable-encryption implementation
++-- integrated-forensic-platform/
+|   +-- backend/
+|   |   +-- ml-service/                     # FastAPI ML service, port 8001
+|   |   +-- searchable-encryption-api/      # Spring Boot encrypted-vault API, port 8082
+|   +-- contracts/
+|   |   +-- EvidenceRegistry.sol            # On-chain evidence smart contract
+|   +-- frontend/                           # React/Vite frontend, port 5173
+|   +-- docker-compose.yml                  # Container orchestration for MySQL, ML service, and SE API
++-- README.md
 ```
 
-## 环境要求
+## Requirements
 
-本地启动推荐安装：
+Recommended local tools:
 
 - Java 17
 - Maven 3.9+
-- Node.js 18+ 和 npm
+- Node.js 18+ and npm
 - Python 3.11
-- MySQL 8.x，或 Docker Desktop
-- 可选：Ganache、MetaMask、Remix，用于链上存证演示
+- MySQL 8.x, or Docker Desktop
+- Optional: Ganache, MetaMask, and Remix for the on-chain evidence demo
 
-默认端口：
+Default ports:
 
-| 服务 | 地址 |
+| Service | Address |
 | --- | --- |
-| 前端 | `http://localhost:5173` |
-| ML 服务 | `http://localhost:8001` |
+| Frontend | `http://localhost:5173` |
+| ML service | `http://localhost:8001` |
 | Searchable Encryption API | `http://localhost:8082` |
 | MySQL | `localhost:3306` |
 
-## 快速启动：本地开发模式
+## Quick Start: Local Development
 
-下面命令以 Windows PowerShell 为例。每个服务建议单独开一个终端窗口。
+The commands below use Windows PowerShell. Running each service in a separate terminal window is recommended.
 
-### 1. 启动 MySQL
+### 1. Start MySQL
 
-如果本机已经有 MySQL，可以直接使用。默认连接参数如下：
+If MySQL is already installed locally, use the default connection settings:
 
 ```text
 host: localhost
@@ -65,16 +65,16 @@ user: root
 password: 123456ysy
 ```
 
-如果没有 MySQL，可以用 Docker 只启动数据库：
+If MySQL is not installed, start only the database with Docker:
 
 ```powershell
 cd integrated-forensic-platform
 docker compose up -d mysql
 ```
 
-Spring Boot 服务启动时会自动创建 `searchable_encryption` 数据库和所需表结构。
+The Spring Boot service automatically creates the `searchable_encryption` database and required tables on startup.
 
-### 2. 启动 ML 服务
+### 2. Start the ML Service
 
 ```powershell
 cd integrated-forensic-platform/backend/ml-service
@@ -86,16 +86,16 @@ $env:FORENSIC_ML_ASSET_DIR = (Resolve-Path "../../../demo/ML_Dataset/ML_Dataset"
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8001
 ```
 
-检查服务是否正常：
+Check that the service is healthy:
 
 ```powershell
 Invoke-WebRequest http://localhost:8001/health
 Invoke-WebRequest http://localhost:8001/api/ml/metadata
 ```
 
-如果模型资产不存在，服务仍可启动，并会使用代码中的 fallback prediction 逻辑，但 XAI 图片和报告数量会减少。
+If model assets are missing, the service can still start and will use the fallback prediction logic in the code, but fewer XAI images and reports will be available.
 
-### 3. 启动可搜索加密 API
+### 3. Start the Searchable Encryption API
 
 ```powershell
 cd integrated-forensic-platform/backend/searchable-encryption-api
@@ -109,20 +109,20 @@ $env:SE_DB_PASSWORD = "123456ysy"
 mvn spring-boot:run
 ```
 
-检查服务是否正常：
+Check that the service is healthy:
 
 ```powershell
 Invoke-WebRequest http://localhost:8082/api/se/health
 ```
 
-也可以先打包再运行：
+You can also package and run the service:
 
 ```powershell
 mvn -DskipTests package
 java -jar target/searchable-encryption-api-0.1.0.jar
 ```
 
-### 4. 启动前端
+### 4. Start the Frontend
 
 ```powershell
 cd integrated-forensic-platform/frontend
@@ -130,42 +130,42 @@ npm install
 npm run dev
 ```
 
-打开：
+Open:
 
 ```text
 http://localhost:5173
 ```
 
-前端默认读取下面这些接口地址：
+The frontend reads these API addresses by default:
 
 ```text
 VITE_ML_API_URL=http://localhost:8001
 VITE_SE_API_URL=http://localhost:8082
 VITE_DEFAULT_CONTRACT_ADDRESS=
-VITE_SE_DEMO_USERNAME=demo
-VITE_SE_DEMO_PASSWORD=demo123
+VITE_PLATFORM_USERNAME=12345
+VITE_PLATFORM_PASSWORD=12345
 ```
 
-如需覆盖，创建 `integrated-forensic-platform/frontend/.env.local`：
+To override them, create `integrated-forensic-platform/frontend/.env.local`:
 
 ```env
 VITE_ML_API_URL=http://localhost:8001
 VITE_SE_API_URL=http://localhost:8082
 VITE_DEFAULT_CONTRACT_ADDRESS=0xYourContractAddress
-VITE_SE_DEMO_USERNAME=demo
-VITE_SE_DEMO_PASSWORD=demo123
+VITE_PLATFORM_USERNAME=12345
+VITE_PLATFORM_PASSWORD=12345
 ```
 
-## Docker 启动后端服务
+## Start Backend Services with Docker
 
-也可以用 Docker Compose 启动 MySQL、ML 服务和 Searchable Encryption API：
+You can also start MySQL, the ML service, and the Searchable Encryption API with Docker Compose:
 
 ```powershell
 cd integrated-forensic-platform
 docker compose up --build
 ```
 
-然后另开终端启动前端：
+Then start the frontend in another terminal:
 
 ```powershell
 cd integrated-forensic-platform/frontend
@@ -173,172 +173,259 @@ npm install
 npm run dev
 ```
 
-容器模式下：
+In container mode:
 
-- MySQL root 密码是 `123456ysy`
-- API 容器通过服务名 `mysql` 连接数据库
-- ML 容器会把仓库的 `demo` 目录挂载到 `/workspace/demo`
+- The MySQL root password is `123456ysy`.
+- The API container connects to the database through the service name `mysql`.
+- The ML container mounts the repository `demo` directory at `/workspace/demo`.
 
-停止容器：
+Stop the containers:
 
 ```powershell
 cd integrated-forensic-platform
 docker compose down
 ```
 
-如果要清空 MySQL 数据卷：
+To clear the MySQL data volume:
 
 ```powershell
 docker compose down -v
 ```
 
-## 使用流程
+## Workflow
 
-### 入侵检测
+### Intrusion Detection
 
-1. 打开前端 `http://localhost:5173`。
-2. 进入“入侵检测”页面。
-3. 使用样例特征或粘贴 JSON 特征。
-4. 点击运行检测，查看预测结果、概率和证据哈希。
-5. 如已配置合约地址和钱包，可将检测结果保存到加密证据库并进行链上存证。
+1. Open the frontend at `http://localhost:5173`.
+2. Go to the `Intrusion Detection` page.
+3. Use the sample features or paste JSON features.
+4. Run detection to view the prediction, probability, and evidence hash.
+5. If the contract address and wallet are configured, save the detection result to the encrypted evidence vault and anchor it on-chain.
 
-### 加密证据库
+### Encrypted Evidence Vault
 
-1. 进入“加密证据库”页面。
-2. 注册或登录用户。
-3. 上传文本、JSON、PDF、图片、Excel 等证据。
-4. 在 `Documents` 中刷新列表，点击文件名或 `Open Preview` 预览。
-5. 在 `Search` 中输入关键词搜索。
-6. 如果修改了关键词提取规则或导入旧数据，可以在 `Documents` 中选择文件并点击 `Rebuild Index`。
+1. Go to the `Encrypted Evidence Vault` page.
+2. Register or sign in.
+3. Upload text, JSON, PDF, image, Excel, and other evidence files.
+4. Refresh the list in `Documents`, then click a file name or `Open Preview`.
+5. Enter keywords in `Search` to search.
+6. If keyword extraction rules changed or old data was imported, select files in `Documents` and click `Rebuild Index`.
 
-搜索说明：
+Search notes:
 
-- 文件名会参与搜索。
-- 文本、PDF、Word、Excel、JSON 中可提取的关键词会参与索引。
-- JSON 的 `Searchable_Keywords`、`keywords`、`keyword` 字段会被特别处理。
-- 类似 `PROTOCOL:tcp` 的值会同时生成 `protocol:tcp`、`protocol`、`tcp`，所以字段名和值都可以搜索。
+- File names participate in search.
+- Extractable keywords from text, PDF, Word, Excel, and JSON files are indexed.
+- The JSON fields `Searchable_Keywords`, `keywords`, and `keyword` receive special handling.
+- Values such as `PROTOCOL:tcp` generate `protocol:tcp`, `protocol`, and `tcp`, so both field names and values can be searched.
 
-### 预览与查找
+### Preview and Find
 
-证据库预览窗口支持：
+The evidence-vault preview window supports:
 
-- 图片原图预览
-- PDF 内嵌预览
-- Excel/CSV 表格预览
-- JSON 自动格式化显示
-- 文本完整预览
-- 文件打开和下载
-- 类似 Word/WPS 的预览内查找：显示匹配数量，支持上一处、下一处，并高亮当前命中
+- Original image preview
+- Embedded PDF preview
+- Excel/CSV table preview
+- Automatically formatted JSON display
+- Full text preview
+- File open and download actions
+- Word/WPS-style in-preview find, with match counts, previous/next navigation, and current-match highlighting
 
-### 链上存证
+### On-Chain Evidence Anchoring
 
-智能合约位于：
+The smart contract is located at:
 
 ```text
 integrated-forensic-platform/contracts/EvidenceRegistry.sol
 ```
 
-演示方式：
+Recommended demo path: Ganache + MetaMask + Remix. The blockchain feature only stores the evidence hash and metadata on-chain; the original evidence file stays in the encrypted evidence vault or on your local machine.
 
-1. 启动 Ganache 或其他本地区块链。
-2. 用 Remix 或你熟悉的工具部署 `EvidenceRegistry.sol`。
-3. 复制部署后的合约地址。
-4. 在前端 `.env.local` 中设置 `VITE_DEFAULT_CONTRACT_ADDRESS`，或直接在页面输入。
-5. 通过 MetaMask 连接对应网络。
-6. 在“链上存证”页面提交或验证证据哈希。
+#### 1. Start Ganache
 
-## 常用 API
+1. Open Ganache.
+2. Click `QuickStart`.
+3. Confirm that `RPC Server` is `HTTP://127.0.0.1:7545`.
+4. Keep the Ganache window open while using the frontend.
 
-ML 服务：
+#### 2. Configure MetaMask
 
-| 方法 | 路径 | 说明 |
+1. Install the MetaMask Chrome extension.
+2. Create a local test wallet. Do not use a real wallet or real private key for this demo.
+3. Add the Ganache network in MetaMask:
+
+```text
+Network name: Ganache
+RPC URL: http://127.0.0.1:7545
+Chain ID: 1337
+Currency symbol: ETH
+```
+
+If MetaMask reports that the chain ID is different, use the chain ID shown by your Ganache workspace settings.
+
+4. Import a Ganache account:
+   - In Ganache, click the key icon beside the first account.
+   - Copy the private key.
+   - In MetaMask, click the account avatar, choose `Import account`, paste the private key, and import it.
+
+#### 3. Deploy `EvidenceRegistry.sol`
+
+Option A: Remix, recommended for the fastest demo:
+
+1. Open `https://remix.ethereum.org`.
+2. Create `contracts/EvidenceRegistry.sol` in Remix and paste the code from `integrated-forensic-platform/contracts/EvidenceRegistry.sol`.
+3. Open `Solidity Compiler`, compile the contract, and set `Advanced Configurations > EVM Version` to `Paris` if Ganache fails to execute newer opcodes.
+4. Open `Deploy & Run Transactions`.
+5. Select `Dev - Ganache Provider` if it is available. Otherwise choose `Web3 Provider` and enter `http://127.0.0.1:7545`.
+6. Click `Deploy`.
+7. Copy the deployed contract address.
+
+Option B: Hardhat, optional:
+
+The repository does not require Hardhat for normal use. If you prefer local deployment, create a Hardhat project under `integrated-forensic-platform`, copy `contracts/EvidenceRegistry.sol` into Hardhat's `contracts/` directory, configure the `ganache` network with `url: "http://127.0.0.1:7545"`, then run:
+
+```powershell
+npx hardhat run scripts/deploy.js --network ganache
+```
+
+#### 4. Put the contract address into the frontend
+
+Use one of these two methods:
+
+1. Open the frontend, go to `On-Chain Evidence`, and paste the address into `Contract Address`. The page stores it in browser `localStorage`.
+2. Or create `integrated-forensic-platform/frontend/.env.local` and set:
+
+```env
+VITE_DEFAULT_CONTRACT_ADDRESS=0xYourDeployedContractAddress
+```
+
+You do not need to edit `BlockchainEvidence.tsx`. The address is read through `src/lib/blockchain.ts`.
+
+#### 5. Confirm the ABI
+
+If you deploy the unchanged `integrated-forensic-platform/contracts/EvidenceRegistry.sol`, the ABI in `integrated-forensic-platform/frontend/src/lib/blockchain.ts` already matches the contract.
+
+Only update `evidenceRegistryAbi` if you changed the Solidity contract. In that case, copy the ABI from `Remix > Solidity Compiler > ABI` and replace the `evidenceRegistryAbi` array in `src/lib/blockchain.ts`.
+
+#### 6. Start the frontend and use the page
+
+```powershell
+cd integrated-forensic-platform/frontend
+npm install
+npm run dev
+```
+
+Open `http://localhost:5173`, then:
+
+1. Go to `On-Chain Evidence`.
+2. Click `Connect Wallet` and select the imported Ganache account in MetaMask.
+3. Confirm that MetaMask is using the `Ganache` network.
+4. Paste or confirm the deployed `EvidenceRegistry` contract address.
+5. Choose an evidence file, or paste a 64-character SHA-256 hash. Choosing a file calculates the hash automatically.
+6. Fill `Case ID`, `Evidence Name`, `File Name`, `Attack Type`, `Source IP`, `Target URL`, and `Description`.
+7. Click `Submit Evidence`, confirm the MetaMask transaction, and wait for the completion message.
+8. To check an existing hash, keep the same contract address and hash, then click `Verify`.
+
+You can also use the integrated workflow from `Intrusion Detection`:
+
+1. Start the ML service and Searchable Encryption API first.
+2. Run a detection.
+3. Paste the contract address in the detection result panel.
+4. Click `Save to Vault and Anchor On-Chain`.
+
+This saves the detection result into the encrypted evidence vault, then sends `storeJSONEvidence(...)` to the smart contract through MetaMask.
+
+## Common APIs
+
+ML service:
+
+| Method | Path | Description |
 | --- | --- | --- |
-| `GET` | `/health` | 健康检查 |
-| `GET` | `/api/ml/metadata` | 模型、XAI 资产和报告元数据 |
-| `POST` | `/api/ml/predict` | 入侵检测预测 |
-| `GET` | `/api/ml/reports/{method}` | 获取 SHAP/LIME/PDP 等报告 |
-| `GET` | `/api/ml/assets/...` | 访问 XAI 图片资产 |
+| `GET` | `/health` | Health check |
+| `GET` | `/api/ml/metadata` | Model, XAI asset, and report metadata |
+| `POST` | `/api/ml/predict` | Intrusion-detection prediction |
+| `GET` | `/api/ml/reports/{method}` | Get SHAP/LIME/PDP and related reports |
+| `GET` | `/api/ml/assets/...` | Access XAI image assets |
 
-Searchable Encryption API：
+Searchable Encryption API:
 
-| 方法 | 路径 | 说明 |
+| Method | Path | Description |
 | --- | --- | --- |
-| `GET` | `/api/se/health` | 健康检查 |
-| `POST` | `/api/se/auth/register` | 注册用户并生成密钥 |
-| `POST` | `/api/se/auth/login` | 登录 |
-| `GET` | `/api/se/documents` | 获取文档列表 |
-| `POST` | `/api/se/documents/upload` | 上传证据 |
-| `GET` | `/api/se/documents/search?keyword=...` | 关键词搜索 |
-| `GET` | `/api/se/documents/{docId}` | 获取预览详情 |
-| `GET` | `/api/se/documents/{docId}/download` | 下载解密后的原文件 |
-| `POST` | `/api/se/documents/{docId}/rebuild-index` | 重建单个文档索引 |
-| `DELETE` | `/api/se/documents/{docId}` | 删除文档 |
+| `GET` | `/api/se/health` | Health check |
+| `POST` | `/api/se/auth/register` | Register a user and generate keys |
+| `POST` | `/api/se/auth/login` | Sign in |
+| `GET` | `/api/se/documents` | Get the document list |
+| `POST` | `/api/se/documents/upload` | Upload evidence |
+| `GET` | `/api/se/documents/search?keyword=...` | Keyword search |
+| `GET` | `/api/se/documents/{docId}` | Get preview details |
+| `GET` | `/api/se/documents/{docId}/download` | Download the decrypted original file |
+| `POST` | `/api/se/documents/{docId}/rebuild-index` | Rebuild one document index |
+| `DELETE` | `/api/se/documents/{docId}` | Delete a document |
 
-## 构建检查
+## Build Checks
 
-前端：
+Frontend:
 
 ```powershell
 cd integrated-forensic-platform/frontend
 npm run build
 ```
 
-后端：
+Backend:
 
 ```powershell
 cd integrated-forensic-platform/backend/searchable-encryption-api
 mvn -DskipTests package
 ```
 
-## 常见问题
+## FAQ
 
-### Login failed: 无法连接到服务：http://localhost:8082
+### Login failed: unable to connect to service: http://localhost:8082
 
-Searchable Encryption API 没启动或端口不是 `8082`。检查：
+The Searchable Encryption API is not running, or it is not using port `8082`. Check:
 
 ```powershell
 Invoke-WebRequest http://localhost:8082/api/se/health
 ```
 
-### ML 服务暂时不可达：http://localhost:8001/api/ml/metadata
+### ML service temporarily unavailable: http://localhost:8001/api/ml/metadata
 
-ML 服务没启动，或 `FORENSIC_ML_ASSET_DIR` 指向错误。检查：
+The ML service is not running, or `FORENSIC_ML_ASSET_DIR` points to the wrong directory. Check:
 
 ```powershell
 Invoke-WebRequest http://localhost:8001/health
 ```
 
-### 数据库连接失败
+### Database connection failed
 
-确认 MySQL 正在运行，并且账号密码匹配。默认密码是 `123456ysy`。如果你的本地 MySQL 密码不同，启动 Spring Boot 前设置：
+Confirm that MySQL is running and that the account and password match. The default password is `123456ysy`. If your local MySQL password is different, set it before starting Spring Boot:
 
 ```powershell
 $env:SE_DB_PASSWORD = "your-password"
 ```
 
-### 搜不到刚改过规则的关键词
+### Recently changed keywords cannot be found
 
-旧文件的索引不会自动变化。进入 `Documents`，选择文件后点击 `Rebuild Index`。如果要重建全部文件，可以先 `Select All`，再 `Rebuild Index`。
+Old file indexes do not update automatically. Go to `Documents`, select the file, and click `Rebuild Index`. To rebuild all files, click `Select All` and then `Rebuild Index`.
 
-### 重启后需要重新登录
+### Sign-in is required again after restart
 
-登录 token 保存在后端内存里。重启 Searchable Encryption API 后，前端已有 token 会失效，需要重新登录。
+The sign-in token is stored in backend memory. After the Searchable Encryption API restarts, the frontend's existing token becomes invalid and you need to sign in again.
 
-### Maven 打包失败：Unable to rename jar
+### Maven package fails: Unable to rename jar
 
-通常是旧的 `java -jar` 进程正在占用 jar。先停掉 8082 后端进程，再执行：
+An old `java -jar` process is usually holding the jar file. Stop the 8082 backend process first, then run:
 
 ```powershell
 mvn -DskipTests package
 ```
 
-### 前端仍显示旧界面
+### Frontend still shows the old UI
 
-浏览器可能缓存了旧资源。使用 `Ctrl + F5` 强制刷新。
+The browser may have cached old assets. Use `Ctrl + F5` to force a refresh.
 
-## 生成文件说明
+## Generated Files
 
-以下目录或文件是本地运行产物，不需要提交：
+The following directories or files are local runtime artifacts and do not need to be committed:
 
 - `frontend/node_modules/`
 - `frontend/dist/`
@@ -347,11 +434,11 @@ mvn -DskipTests package
 - `*.log`
 - `.env.local`
 
-加密证据库用户密钥会保存在当前系统用户目录下，例如：
+Encrypted evidence-vault user keys are stored under the current system user directory, for example:
 
 ```text
 %USERPROFILE%\.integrated-forensics\client-keys
 %USERPROFILE%\.searchable-encryption\client-keys
 ```
 
-这些文件是本机运行数据，不应提交到仓库。
+These files are local runtime data and should not be committed to the repository.

@@ -4,6 +4,8 @@ import {
   DatabaseZap,
   Fingerprint,
   Gauge,
+  KeyRound,
+  LogOut,
   LockKeyhole,
   Network
 } from "lucide-react";
@@ -18,20 +20,23 @@ type NavItem = {
 };
 
 const navItems: NavItem[] = [
-  { key: "dashboard", label: "工作台", icon: <Gauge size={18} /> },
-  { key: "detection", label: "入侵检测", icon: <Network size={18} /> },
-  { key: "explainability", label: "解释性取证", icon: <BarChart3 size={18} /> },
-  { key: "vault", label: "加密证据库", icon: <LockKeyhole size={18} /> },
-  { key: "blockchain", label: "链上存证", icon: <Blocks size={18} /> }
+  { key: "dashboard", label: "Workbench", icon: <Gauge size={18} /> },
+  { key: "detection", label: "Intrusion Detection", icon: <Network size={18} /> },
+  { key: "explainability", label: "Explainable Forensics", icon: <BarChart3 size={18} /> },
+  { key: "vault", label: "Encrypted Evidence Vault", icon: <LockKeyhole size={18} /> },
+  { key: "blockchain", label: "On-Chain Evidence", icon: <Blocks size={18} /> }
 ];
 
 type AppShellProps = {
   activePage: PageKey;
+  currentUser: string;
+  onChangePassword: () => void;
+  onLogout: () => void;
   onPageChange: (page: PageKey) => void;
   children: ReactNode;
 };
 
-export function AppShell({ activePage, onPageChange, children }: AppShellProps) {
+export function AppShell({ activePage, currentUser, onChangePassword, onLogout, onPageChange, children }: AppShellProps) {
   return (
     <div className="app-shell">
       <aside className="sidebar">
@@ -60,8 +65,19 @@ export function AppShell({ activePage, onPageChange, children }: AppShellProps) 
         </nav>
 
         <div className="sidebar-footer">
-          <DatabaseZap size={17} />
-          <span>ML + SE + Chain</span>
+          <div className="sidebar-user">
+            <DatabaseZap size={17} />
+            <div>
+              <strong>{currentUser}</strong>
+              <button className="sidebar-account-link" type="button" onClick={onChangePassword}>
+                <KeyRound size={13} />
+                Change password
+              </button>
+            </div>
+          </div>
+          <button className="sidebar-logout" type="button" title="Sign out" aria-label="Sign out" onClick={onLogout}>
+            <LogOut size={17} />
+          </button>
         </div>
       </aside>
 
@@ -69,4 +85,3 @@ export function AppShell({ activePage, onPageChange, children }: AppShellProps) 
     </div>
   );
 }
-

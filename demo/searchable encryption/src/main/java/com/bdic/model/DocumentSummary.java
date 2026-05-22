@@ -4,29 +4,29 @@ import java.io.Serializable;
 import java.time.LocalDateTime;
 
 /**
- * 文档摘要信息。
+ * Document summary information.
  *
- * <p>用于文档列表展示，只包含元数据，不包含加密正文。</p>
+ * <p>Used for document list display. Contains only metadata, not encrypted body content.</p>
  */
 public class DocumentSummary implements Serializable {
-    /** Java 序列化版本号，保证客户端和服务端通过对象流传输时结构兼容。 */
+    /** Java serialization version to keep client/server object-stream transfer compatible. */
     private static final long serialVersionUID = 1L;
 
-    /** 用户可见的文档编号。 */
+    /** User-visible document ID. */
     private final String docId;
-    /** 原始文件名或纯文本上传时生成的默认文件名。 */
+    /** Original file name or default file name generated for plaintext uploads. */
     private final String fileName;
-    /** 文件 MIME 类型，例如 text/plain、image/png。 */
+    /** File MIME type, such as text/plain or image/png. */
     private final String mediaType;
-    /** 原始文件大小，单位为字节。 */
+    /** Original file size in bytes. */
     private final long fileSize;
-    /** 该文档在关键词索引表中的密文关键词数量。 */
+    /** Number of encrypted keywords for this document in the keyword index table. */
     private final int keywordCount;
-    /** 文档首次写入数据库的时间。 */
+    /** Time when the document was first written to the database. */
     private final LocalDateTime createdAt;
 
     /**
-     * 构造用于文档列表展示的摘要对象。
+     * Constructs a summary object for document list display.
      */
     public DocumentSummary(String docId, String fileName, String mediaType, long fileSize, int keywordCount, LocalDateTime createdAt) {
         this.docId = docId;
@@ -38,42 +38,42 @@ public class DocumentSummary implements Serializable {
     }
 
     /**
-     * 返回用户可见的文档编号。
+     * Returns the user-visible document ID.
      */
     public String getDocId() {
         return docId;
     }
 
     /**
-     * 返回该文档的索引关键词数量。
+     * Returns the number of indexed keywords for this document.
      */
     public int getKeywordCount() {
         return keywordCount;
     }
 
     /**
-     * 返回原始文件名。
+     * Returns the original file name.
      */
     public String getFileName() {
         return fileName;
     }
 
     /**
-     * 返回面向界面展示的媒体类型分类。
+     * Returns the media type category displayed by the UI.
      */
     public String getMediaType() {
         return mediaType;
     }
 
     /**
-     * 返回原始文件大小，单位为字节。
+     * Returns the original file size in bytes.
      */
     public long getFileSize() {
         return fileSize;
     }
 
     /**
-     * 返回文档创建时间。
+     * Returns the document creation time.
      */
     public LocalDateTime getCreatedAt() {
         return createdAt;

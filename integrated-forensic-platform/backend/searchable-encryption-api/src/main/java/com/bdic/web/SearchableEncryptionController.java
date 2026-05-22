@@ -44,6 +44,19 @@ public class SearchableEncryptionController {
         return facade.login(request);
     }
 
+    @PostMapping("/auth/change-password")
+    AuthResponse changePassword(
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @Valid @RequestBody ChangePasswordRequest request
+    ) {
+        return facade.changePassword(facade.requireSession(authorization), request);
+    }
+
+    @PostMapping("/auth/reset-password")
+    AuthResponse resetPassword(@Valid @RequestBody ResetPasswordRequest request) {
+        return facade.resetPassword(request);
+    }
+
     @GetMapping("/documents")
     List<DocumentDto> listDocuments(@RequestHeader(value = "Authorization", required = false) String authorization) {
         return facade.listDocuments(facade.requireSession(authorization));

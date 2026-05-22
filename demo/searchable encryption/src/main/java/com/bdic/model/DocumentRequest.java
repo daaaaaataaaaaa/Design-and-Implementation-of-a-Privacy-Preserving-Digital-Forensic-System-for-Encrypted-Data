@@ -3,28 +3,28 @@ package com.bdic.model;
 import java.io.Serializable;
 
 /**
- * 文档操作请求。
+ * Document operation request.
  *
- * <p>下载、删除、重建索引等操作只需要传递用户可见的 docId。</p>
+ * <p>Operations such as download, delete, and index rebuild only need the user-visible docId.</p>
  */
 public class DocumentRequest implements Serializable {
-    /** Java 序列化版本号，保证对象流反序列化时结构兼容。 */
+    /** Java serialization version to keep object-stream deserialization compatible. */
     private static final long serialVersionUID = 1L;
 
-    /** 用户界面上看到的文档编号，服务端会再转换成数据库内部 ID。 */
+    /** Document ID shown in the UI; the server converts it to an internal database ID. */
     private final String docId;
 
     /**
-     * 创建只携带文档编号的请求对象。
+     * Creates a request object carrying only the document ID.
      *
-     * @param docId 用户输入或列表中选择的文档编号。
+     * @param docId document ID entered by the user or selected from the list.
      */
     public DocumentRequest(String docId) {
         this.docId = docId;
     }
 
     /**
-     * 返回待操作的用户可见文档编号。
+     * Returns the user-visible document ID to operate on.
      */
     public String getDocId() {
         return docId;

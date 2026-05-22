@@ -14,17 +14,17 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 
 /**
- * TLS Socket 工厂测试。
+ * TLS socket factory tests.
  */
 public class SecureSocketProviderTest extends TestCase {
 
     /**
-     * 验证使用同一内置开发证书创建的服务端和客户端可以完成握手并交换数据。
+     * Verifies that a server and client created with the same built-in development certificate can complete a handshake and exchange data.
      */
     public void testTlsClientAndServerCanExchangeData() throws Exception {
         ExecutorService executor = Executors.newSingleThreadExecutor();
         try (ServerSocket serverSocket = SecureSocketProvider.createServerSocket(0)) {
-            // 后台线程模拟服务端：接收一行文本，再回写 echo 响应。
+            // Background thread simulates the server: receive one line of text and write back an echo response.
             Future<String> serverResult = executor.submit(() -> {
                 try (Socket accepted = serverSocket.accept();
                      BufferedReader reader = new BufferedReader(new InputStreamReader(accepted.getInputStream(), StandardCharsets.UTF_8));
@@ -35,7 +35,7 @@ public class SecureSocketProviderTest extends TestCase {
                 }
             });
 
-            // 客户端连接随机端口，发送 ping 并校验服务端回声。
+            // Client connects to a random port, sends ping, and verifies the server echo.
             try (Socket clientSocket = SecureSocketProvider.createClientSocket("127.0.0.1", serverSocket.getLocalPort());
                  BufferedReader reader = new BufferedReader(new InputStreamReader(clientSocket.getInputStream(), StandardCharsets.UTF_8));
                  PrintWriter writer = new PrintWriter(clientSocket.getOutputStream(), true, StandardCharsets.UTF_8)) {
@@ -45,7 +45,7 @@ public class SecureSocketProviderTest extends TestCase {
 
             assertEquals("ping", serverResult.get());
         } finally {
-            // 测试结束时关闭线程池，防止后台线程影响测试进程退出。
+            // Shut down the thread pool at the end of the test so background threads do not block process exit.
             executor.shutdownNow();
         }
     }

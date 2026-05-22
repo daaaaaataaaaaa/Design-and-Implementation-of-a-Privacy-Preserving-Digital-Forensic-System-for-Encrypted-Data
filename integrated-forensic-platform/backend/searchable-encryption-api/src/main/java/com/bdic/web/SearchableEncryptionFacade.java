@@ -47,6 +47,7 @@ public class SearchableEncryptionFacade {
     private static final int SPREADSHEET_PREVIEW_MAX_SHEETS = 3;
     private static final int SPREADSHEET_PREVIEW_MAX_ROWS = 40;
     private static final int SPREADSHEET_PREVIEW_MAX_COLUMNS = 12;
+    private static final String RECOVERY_CODE = getValue("se.auth.recovery-code", "SE_AUTH_RECOVERY_CODE", "12345");
 
     private final EncryptedDataRepository repository;
     private final UserRepository userRepository;
@@ -79,6 +80,33 @@ public class SearchableEncryptionFacade {
         if (!userRepository.authenticate(request.username(), request.password())) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid username or password.");
         }
+        return createSession(request.username());
+    }
+
+    AuthResponse changePassword(UserSession session, ChangePasswordRequest request) {
+        if (!StringUtils.hasText(request.newPassword())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "New password is required.");
+        }
+        if (!userRepository.authenticate(session.username(), request.currentPassword())) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Current password is incorrect.");
+        }
+        userRepository.updatePassword(session.username(), request.newPassword());
+        sessions.entrySet().removeIf(entry -> entry.getValue().username().equals(session.username()));
+        return createSession(session.username());
+    }
+
+    AuthResponse resetPassword(ResetPasswordRequest request) {
+        if (!StringUtils.hasText(request.newPassword())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "New password is required.");
+        }
+        if (!RECOVERY_CODE.equals(request.recoveryCode())) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Recovery code is invalid.");
+        }
+        if (!userRepository.exists(request.username())) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Account not found.");
+        }
+        userRepository.updatePassword(request.username(), request.newPassword());
+        sessions.entrySet().removeIf(entry -> entry.getValue().username().equals(request.username()));
         return createSession(request.username());
     }
 
@@ -320,6 +348,18 @@ public class SearchableEncryptionFacade {
             return authorizationHeader.substring("Bearer ".length()).trim();
         }
         return authorizationHeader.trim();
+    }
+
+    private static String getValue(String propertyKey, String envKey, String defaultValue) {
+        String propertyValue = System.getProperty(propertyKey);
+        if (StringUtils.hasText(propertyValue)) {
+            return propertyValue;
+        }
+        String envValue = System.getenv(envKey);
+        if (StringUtils.hasText(envValue)) {
+            return envValue;
+        }
+        return defaultValue;
     }
 
     private static String truncate(String value, int limit) {

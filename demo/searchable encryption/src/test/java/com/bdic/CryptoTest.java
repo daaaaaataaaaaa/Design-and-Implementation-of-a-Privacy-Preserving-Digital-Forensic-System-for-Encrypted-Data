@@ -10,19 +10,19 @@ import java.nio.charset.StandardCharsets;
 import java.security.KeyPair;
 
 /**
- * 加密相关工具的单元测试。
+ * Unit tests for encryption-related utilities.
  */
 public class CryptoTest extends TestCase {
 
     /**
-     * 验证 DES 加密后的内容可以用同一密钥正确解密回原文。
+     * Verifies that DES-encrypted content can be correctly decrypted back to plaintext with the same key.
      */
     public void testDesRoundTrip() throws Exception {
-        // 生成一次性测试密钥和明文。
+        // Generate a one-time test key and plaintext.
         SecretKey desKey = DESUtil.generateKey();
         String plaintext = "Hello World Data";
 
-        // 加密后再解密，期望字节内容完整恢复。
+        // Encrypt and then decrypt; the byte content should be fully restored.
         byte[] encrypted = DESUtil.encrypt(plaintext.getBytes(StandardCharsets.UTF_8), desKey);
         byte[] decrypted = DESUtil.decrypt(encrypted, desKey);
 
@@ -30,12 +30,12 @@ public class CryptoTest extends TestCase {
     }
 
     /**
-     * 验证 PEKS 陷门只匹配同一规范化关键词。
+     * Verifies that a PEKS trapdoor matches only the same normalized keyword.
      */
     public void testPeksTrapdoorMatchesOnlySameKeyword() throws Exception {
         KeyPair peksKeyPair = PEKSUtil.generateKeyPair();
 
-        // encrypt 和 getTrapdoor 都会做 trim + lower-case，因此 Secret 与 secret 应该匹配。
+        // encrypt and getTrapdoor both trim and lowercase, so Secret and secret should match.
         byte[] peksCiphertext = PEKSUtil.encrypt(peksKeyPair.getPublic(), "Secret");
         byte[] trapdoor = PEKSUtil.getTrapdoor(peksKeyPair.getPrivate(), "secret");
         byte[] wrongTrapdoor = PEKSUtil.getTrapdoor(peksKeyPair.getPrivate(), "wrong");
@@ -45,7 +45,7 @@ public class CryptoTest extends TestCase {
     }
 
     /**
-     * 验证 PEKS 公私钥持久化为字节后仍能恢复并完成搜索匹配。
+     * Verifies that PEKS public/private keys persisted as bytes can be restored and still complete search matching.
      */
     public void testPeksKeyPairCanBeRestoredFromEncodedBytes() throws Exception {
         KeyPair peksKeyPair = PEKSUtil.generateKeyPair();
@@ -63,10 +63,10 @@ public class CryptoTest extends TestCase {
     }
 
     /**
-     * 验证密码摘要校验能接受正确密码并拒绝错误密码。
+     * Verifies that password hash checking accepts the correct password and rejects the wrong one.
      */
     public void testPasswordHashVerification() {
-        // 注册时保存的是盐和摘要，登录时用同一盐重新计算摘要。
+        // Registration stores the salt and hash; sign-in recomputes the hash with the same salt.
         byte[] salt = PasswordUtil.generateSalt();
         byte[] hash = PasswordUtil.hashPassword("correct horse battery staple", salt);
 

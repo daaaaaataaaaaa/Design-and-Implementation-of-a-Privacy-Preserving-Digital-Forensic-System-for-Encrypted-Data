@@ -4,22 +4,22 @@ import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 
 /**
- * Windows 原生对话框工具，负责文件夹选择等系统级交互。
+ * Windows native dialog utility for system-level interactions such as folder selection.
  */
 public final class NativeDialogHelper {
 
-    /** 工具类不需要实例化。 */
+    /** Utility class; instantiation is not needed. */
     private NativeDialogHelper() {
     }
 
     /**
-     * 调用 Windows 原生文件夹选择框，并返回用户选择的文件夹路径。
+     * Opens the Windows native folder chooser and returns the folder path selected by the user.
      *
-     * <p>Swing 的 {@link javax.swing.JFileChooser} 在部分 Windows 环境下文件夹体验较弱，
-     * 因此这里通过 PowerShell 调用 FolderBrowserDialog。</p>
+     * <p>Swing's {@link javax.swing.JFileChooser} offers a weaker folder experience in some Windows environments,
+     * so this calls FolderBrowserDialog through PowerShell.</p>
      */
     public static String chooseFolder(String description) {
-        // PowerShell 输出路径前先做 Base64 编码，避免中文路径或特殊字符在进程输出中损坏。
+        // Base64-encode the path before PowerShell outputs it to avoid corruption from non-ASCII paths or special characters.
         String script = "$dialog = New-Object System.Windows.Forms.FolderBrowserDialog; "
                 + "$dialog.Description = '" + escapePowerShellSingleQuoted(description) + "'; "
                 + "$dialog.ShowNewFolderButton = $false; "
@@ -43,7 +43,7 @@ public final class NativeDialogHelper {
             if (exitCode != 0 || output.isBlank()) {
                 return null;
             }
-            // 取最后一行非空输出，规避 PowerShell 可能输出额外提示文本。
+            // Use the last non-empty output line to avoid extra prompt text that PowerShell may emit.
             String encodedPath = output.lines()
                     .map(String::trim)
                     .filter(line -> !line.isBlank())
@@ -59,7 +59,7 @@ public final class NativeDialogHelper {
     }
 
     /**
-     * 转义单引号，保证描述文本可以安全放进 PowerShell 单引号字符串。
+     * Escapes single quotes so description text can be safely placed inside a PowerShell single-quoted string.
      */
     private static String escapePowerShellSingleQuoted(String value) {
         return value == null ? "" : value.replace("'", "''");

@@ -8,25 +8,25 @@ import java.sql.SQLException;
 import java.sql.Statement;
 
 /**
- * 数据库连接和表结构初始化入口。
+ * Database connection and schema initialization entry point.
  *
- * <p>配置读取顺序为：JVM 系统属性、环境变量、默认值。启动服务端时会自动创建数据库、
- * 用户表、文档表和关键词索引表，并兼容旧版本缺失字段。</p>
+ * <p>Configuration is read in this order: JVM system properties, environment variables, then defaults. When the server starts, it automatically creates the database,
+ * user table, document table, and keyword index table, while filling fields missing from older versions.</p>
  */
 public class DatabaseManager {
 
-    /** 数据库主机地址。 */
+    /** Database host address. */
     private final String host;
-    /** 数据库服务端口。 */
+    /** Database service port. */
     private final int port;
-    /** 业务数据库名称。 */
+    /** Business database name. */
     private final String databaseName;
-    /** 数据库登录用户名。 */
+    /** Database login username. */
     private final String username;
-    /** 数据库登录密码。 */
+    /** Database login password. */
     private final String password;
 
-    /** 使用系统属性、环境变量或默认值构造数据库连接配置。 */
+    /** Builds database connection configuration from system properties, environment variables, or defaults. */
     public DatabaseManager() {
         this(
                 getValue("se.db.host", "SE_DB_HOST", "localhost"),
@@ -37,7 +37,7 @@ public class DatabaseManager {
         );
     }
 
-    /** 使用显式传入的数据库参数构造管理器。 */
+    /** Constructs the manager with explicitly provided database parameters. */
     public DatabaseManager(String host, int port, String databaseName, String username, String password) {
         this.host = host;
         this.port = port;
@@ -46,17 +46,17 @@ public class DatabaseManager {
         this.password = password;
     }
 
-    /** 获取指向业务数据库的 JDBC 连接。 */
+    /** Gets a JDBC connection to the business database. */
     public Connection getConnection() throws SQLException {
-        // 每次调用都创建新的连接，仓储方法用 try-with-resources 控制释放。
+        // Each call creates a new connection; repository methods release it with try-with-resources.
         return DriverManager.getConnection(buildDatabaseJdbcUrl(), username, password);
     }
 
     /**
-     * 创建业务数据库和必要表结构。重复执行是安全的，适合服务端每次启动时调用。
+     * Creates the business database and required schema. Repeated execution is safe and suitable for every server startup.
      */
     public void initialize() {
-        // 第一步连接 MySQL 服务本身，确保业务数据库存在。
+        // Step one connects to the MySQL service itself and ensures the business database exists.
         try (Connection serverConnection = DriverManager.getConnection(buildServerJdbcUrl(), username, password);
              Statement serverStatement = serverConnection.createStatement()) {
             serverStatement.executeUpdate("CREATE DATABASE IF NOT EXISTS `" + databaseName + "` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");
@@ -64,10 +64,10 @@ public class DatabaseManager {
             throw new RuntimeException("Failed to create database", e);
         }
 
-        // 第二步连接业务库，创建或补齐所有业务表结构。
+        // Step two connects to the business database and creates or completes all business tables.
         try (Connection connection = getConnection();
              Statement statement = connection.createStatement()) {
-            // 用户表只保存密码摘要和盐，不保存明文密码。
+            // The user table stores only password hashes and salts, never plaintext passwords.
             statement.executeUpdate("""
                 CREATE TABLE IF NOT EXISTS users (
                     username VARCHAR(100) PRIMARY KEY,
@@ -77,7 +77,7 @@ public class DatabaseManager {
                 )
                 """);
 
-            // 文档表保存加密正文和展示元数据，owner_username 用于多用户隔离。
+            // The document table stores encrypted content and display metadata; owner_username provides multi-user isolation.
             statement.executeUpdate("""
                 CREATE TABLE IF NOT EXISTS documents (
                     doc_id VARCHAR(255) PRIMARY KEY,
@@ -93,7 +93,7 @@ public class DatabaseManager {
                 )
                 """);
 
-            // 关键词索引表保存每个关键词的可搜索密文，删除文档时通过外键自动清理。
+            // The keyword index table stores searchable ciphertext for each keyword and is automatically cleaned by foreign keys on document deletion.
             statement.executeUpdate("""
                 CREATE TABLE IF NOT EXISTS keyword_index (
                     id BIGINT PRIMARY KEY AUTO_INCREMENT,
@@ -105,7 +105,7 @@ public class DatabaseManager {
                 )
                 """);
 
-            // 以下字段补齐用于兼容历史表结构，避免升级后手动迁移。
+            // The following column additions support historical schemas and avoid manual migrations after upgrades.
             ensureColumnExists(statement, "documents", "display_doc_id", "VARCHAR(255) NULL");
             ensureColumnExists(statement, "documents", "owner_username", "VARCHAR(100) NOT NULL DEFAULT 'system'");
             ensureColumnExists(statement, "documents", "file_name", "VARCHAR(255) NOT NULL DEFAULT 'unknown.bin'");
@@ -118,7 +118,7 @@ public class DatabaseManager {
             statement.executeUpdate("UPDATE documents SET display_doc_id = doc_id WHERE display_doc_id IS NULL OR display_doc_id = ''");
             modifyColumn(statement, "keyword_index", "peks_ciphertext", "VARBINARY(2048) NOT NULL");
 
-            // 为常用查询条件建立索引，提升按用户列文档和搜索的效率。
+            // Create indexes for common query conditions to improve per-user document listing and search.
             if (!indexExists(connection, "documents", "idx_documents_owner")) {
                 statement.executeUpdate("CREATE INDEX idx_documents_owner ON documents(owner_username)");
             }
@@ -136,32 +136,32 @@ public class DatabaseManager {
     }
 
     /**
-     * 尝试给历史表补充列；如果列已存在，就忽略 MySQL 的重复列错误。
+     * Attempts to add a column to a historical table; ignores MySQL duplicate-column errors when the column already exists.
      */
     private void ensureColumnExists(Statement statement, String tableName, String columnName, String columnDefinition) throws SQLException {
         try {
             statement.executeUpdate("ALTER TABLE " + tableName + " ADD COLUMN " + columnName + " " + columnDefinition);
         } catch (SQLException e) {
-            // 1060 表示列已存在，说明当前库结构已满足要求。
+            // 1060 means the column already exists, so the current schema is already sufficient.
             if (e.getErrorCode() != 1060) {
                 throw e;
             }
         }
     }
 
-    /** 调整已有列定义；目标列不存在时交由后续逻辑兼容处理。 */
+    /** Adjusts an existing column definition; if the target column is missing, later compatibility logic handles it. */
     private void modifyColumn(Statement statement, String tableName, String columnName, String columnDefinition) throws SQLException {
         try {
             statement.executeUpdate("ALTER TABLE " + tableName + " MODIFY COLUMN " + columnName + " " + columnDefinition);
         } catch (SQLException e) {
-            // 1054 表示列不存在，此处忽略以兼容历史版本。
+            // 1054 means the column does not exist; ignore it here for historical-version compatibility.
             if (e.getErrorCode() != 1054) {
                 throw e;
             }
         }
     }
 
-    /** 检查指定表上是否已经存在目标索引。 */
+    /** Checks whether the target index already exists on the specified table. */
     private boolean indexExists(Connection connection, String tableName, String indexName) throws SQLException {
         DatabaseMetaData metaData = connection.getMetaData();
         try (ResultSet resultSet = metaData.getIndexInfo(connection.getCatalog(), null, tableName, false, false)) {
@@ -175,20 +175,20 @@ public class DatabaseManager {
         return false;
     }
 
-    /** 构造连接数据库服务器本身的 JDBC URL，用于建库。 */
+    /** Builds the JDBC URL that connects to the database server itself for database creation. */
     private String buildServerJdbcUrl() {
         return "jdbc:mysql://" + host + ":" + port
                 + "/?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai&characterEncoding=UTF-8";
     }
 
-    /** 构造连接业务数据库的 JDBC URL。 */
+    /** Builds the JDBC URL for the business database. */
     private String buildDatabaseJdbcUrl() {
         return "jdbc:mysql://" + host + ":" + port + "/" + databaseName
                 + "?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai&characterEncoding=UTF-8";
     }
 
     /**
-     * 优先读取 JVM 参数，其次读取环境变量，最后使用默认值。
+     * Reads JVM parameters first, then environment variables, and finally defaults.
      */
     private static String getValue(String propertyKey, String envKey, String defaultValue) {
         String propertyValue = System.getProperty(propertyKey);

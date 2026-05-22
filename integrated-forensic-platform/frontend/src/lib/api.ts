@@ -5,6 +5,21 @@ function defaultApiUrl(port: number) {
 export const ML_API = import.meta.env.VITE_ML_API_URL ?? defaultApiUrl(8001);
 export const SE_API = import.meta.env.VITE_SE_API_URL ?? defaultApiUrl(8082);
 
+const AUTH_TOKEN_KEY = "se_token";
+const AUTH_USER_KEY = "se_user";
+
+export type AuthResponse = {
+  token: string;
+  username: string;
+};
+
+export type MlServiceStatus = {
+  running: boolean;
+  status: "running" | "stopped" | "starting" | "error" | string;
+  apiUrl: string;
+  message: string;
+};
+
 export type MlMetadata = {
   service: string;
   model_available: boolean;
@@ -90,10 +105,10 @@ export async function jsonRequest<T>(url: string, init?: RequestInit): Promise<T
     return response.json() as Promise<T>;
   } catch (error) {
     if (error instanceof DOMException && error.name === "AbortError") {
-      throw new Error(`请求超时：${url}`);
+      throw new Error(`Request timed out: ${url}`);
     }
     if (error instanceof TypeError) {
-      throw new Error(`无法连接到服务：${url}`);
+      throw new Error(`Unable to connect to service: ${url}`);
     }
     throw error;
   } finally {
@@ -103,4 +118,54 @@ export async function jsonRequest<T>(url: string, init?: RequestInit): Promise<T
 
 export function authHeader(token: string): Record<string, string> {
   return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+export function persistAuthSession(response: AuthResponse) {
+  localStorage.setItem(AUTH_TOKEN_KEY, response.token);
+  localStorage.setItem(AUTH_USER_KEY, response.username);
+}
+
+export function clearAuthSession() {
+  localStorage.removeItem(AUTH_TOKEN_KEY);
+  localStorage.removeItem(AUTH_USER_KEY);
+}
+
+export function loginPlatform(username: string, password: string) {
+  return jsonRequest<AuthResponse>(`${SE_API}/api/se/auth/login`, {
+    method: "POST",
+    body: JSON.stringify({ username, password })
+  });
+}
+
+export function registerPlatform(username: string, password: string) {
+  return jsonRequest<AuthResponse>(`${SE_API}/api/se/auth/register`, {
+    method: "POST",
+    body: JSON.stringify({ username, password })
+  });
+}
+
+export function changePlatformPassword(token: string, currentPassword: string, newPassword: string) {
+  return jsonRequest<AuthResponse>(`${SE_API}/api/se/auth/change-password`, {
+    method: "POST",
+    headers: authHeader(token),
+    body: JSON.stringify({ currentPassword, newPassword })
+  });
+}
+
+export function resetPlatformPassword(username: string, recoveryCode: string, newPassword: string) {
+  return jsonRequest<AuthResponse>(`${SE_API}/api/se/auth/reset-password`, {
+    method: "POST",
+    body: JSON.stringify({ username, recoveryCode, newPassword })
+  });
+}
+
+export function getMlServiceStatus() {
+  return jsonRequest<MlServiceStatus>(`${SE_API}/api/ml-control/status`);
+}
+
+export async function startMlService(token: string) {
+  return jsonRequest<MlServiceStatus>(`${SE_API}/api/ml-control/start`, {
+    method: "POST",
+    headers: authHeader(token)
+  });
 }

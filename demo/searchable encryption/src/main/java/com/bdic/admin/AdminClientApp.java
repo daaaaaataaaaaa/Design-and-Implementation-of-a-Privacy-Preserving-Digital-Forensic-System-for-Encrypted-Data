@@ -19,63 +19,63 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * 管理端桌面客户端入口。
+ * Desktop client entry point for the administration UI.
  *
- * <p>职责：窗口入口、Tab 装配、全局状态协调与连接生命周期管理。</p>
+ * <p>Responsibilities: window startup, tab assembly, global state coordination, and connection lifecycle management.</p>
  */
 public class AdminClientApp extends JFrame {
 
-    /** 客户端默认连接本机服务端。 */
+    /** The client connects to the local server by default. */
     private static final String HOST = "127.0.0.1";
-    /** 客户端与服务端约定的 TLS 监听端口。 */
+    /** TLS listening port shared by the client and server. */
     private static final int PORT = 12345;
-    /** 嵌入式服务端启动后最多重试连接次数。 */
+    /** Maximum number of connection retries after the embedded server starts. */
     private static final int EMBEDDED_SERVER_RETRIES = 20;
-    /** 每次等待嵌入式服务端就绪的间隔。 */
+    /** Delay between checks for embedded server readiness. */
     private static final long EMBEDDED_SERVER_RETRY_DELAY_MS = 300L;
-    /** 自动抽取文本关键词的最大文件大小，避免大文件上传时卡住界面。 */
+    /** Maximum file size for automatic text keyword extraction to avoid UI stalls on large uploads. */
     private static final long MAX_AUTOMATIC_TEXT_KEYWORD_BYTES = 10L * 1024 * 1024;
-    /** 主窗口基础宽度，用于 UI 缩放管理器计算比例。 */
+    /** Base main-window width used by the UI scaling manager. */
     private static final int WINDOW_BASE_WIDTH = 760;
-    /** 主窗口基础高度，用于 UI 缩放管理器计算比例。 */
+    /** Base main-window height used by the UI scaling manager. */
     private static final int WINDOW_BASE_HEIGHT = 560;
 
-    /** 负责加载或创建当前用户本地密钥。 */
+    /** Loads or creates local keys for the current user. */
     private final ClientKeyManager keyManager = new ClientKeyManager();
 
-    /** 当前登录用户名。 */
+    /** Currently signed-in username. */
     private String currentUsername;
-    /** 当前用户的 DES 密钥和 PEKS 搜索公私钥。 */
+    /** DES key and PEKS search key pair for the current user. */
     private ClientKeyManager.KeyBundle keyBundle;
 
-    /** 与服务端建立的 TLS socket。 */
+    /** TLS socket connected to the server. */
     private Socket socket;
-    /** 发往服务端的对象输出流。 */
+    /** Object output stream sent to the server. */
     private ObjectOutputStream out;
-    /** 接收服务端响应的对象输入流。 */
+    /** Object input stream receiving server responses. */
     private ObjectInputStream in;
 
-    /** 封装协议读写的客户端服务。 */
+    /** Client service that wraps protocol reads and writes. */
     private DocumentServiceClient serviceClient;
-    /** 负责加密、解密、索引构建等本地文档操作。 */
+    /** Handles local document operations such as encryption, decryption, and index building. */
     private DocumentOperationService operationService;
-    /** 统一管理所有页面后台任务的忙碌状态。 */
+    /** Centrally manages busy states for background tasks on all pages. */
     private UiBusyStateManager busyStateManager;
 
-    /** 上传页控制器。 */
+    /** Upload page controller. */
     private UploadPanelController uploadController;
-    /** 搜索页控制器。 */
+    /** Search page controller. */
     private SearchPanelController searchController;
-    /** 文档管理页控制器。 */
+    /** Document management page controller. */
     private DocumentsPanelController documentsController;
 
-    /** 顶部退出登录按钮，后台任务运行时会被禁用。 */
+    /** Header logout button, disabled while background tasks are running. */
     private JButton logoutButton;
 
     /**
-     * 构造客户端主窗口。
+     * Constructs the client main window.
      *
-     * <p>启动顺序：连接服务端、完成登录/注册、加载本地密钥、创建三个业务页面。</p>
+     * <p>Startup order: connect to the server, complete sign-in or registration, load local keys, and create the three workflow pages.</p>
      */
     public AdminClientApp() {
         try {
@@ -95,7 +95,7 @@ public class AdminClientApp extends JFrame {
     }
 
     /**
-     * 连接 TLS 服务端；如果本机没有服务端，则自动启动嵌入式服务端后重试。
+     * Connects to the TLS server; if no local server exists, starts the embedded server and retries.
      */
     private void connectToServer() throws Exception {
         try {
@@ -112,7 +112,7 @@ public class AdminClientApp extends JFrame {
         Exception lastFailure = null;
         for (int attempt = 1; attempt <= EMBEDDED_SERVER_RETRIES; attempt++) {
             try {
-                // 嵌入式服务端需要一点时间完成数据库初始化和端口监听。
+                // The embedded server needs a little time to initialize the database and start listening.
                 Thread.sleep(EMBEDDED_SERVER_RETRY_DELAY_MS);
                 openConnection();
                 return;
@@ -125,7 +125,7 @@ public class AdminClientApp extends JFrame {
     }
 
     /**
-     * 建立 TLS socket，并在其上创建对象输入输出流。
+     * Opens a TLS socket and creates object input/output streams on it.
      */
     private void openConnection() throws Exception {
         socket = SecureSocketProvider.createClientSocket(HOST, PORT);
@@ -135,7 +135,7 @@ public class AdminClientApp extends JFrame {
     }
 
     /**
-     * 判断异常链中是否包含连接被拒绝，用于区分“服务端未启动”和其它连接错误。
+     * Checks whether the exception chain contains connection refused, distinguishing "server not started" from other connection errors.
      */
     private boolean isConnectionRefused(Throwable throwable) {
         Throwable current = throwable;
@@ -149,7 +149,7 @@ public class AdminClientApp extends JFrame {
     }
 
     /**
-     * 显示登录/注册对话框，并在成功后加载当前用户密钥。
+     * Shows the sign-in/registration dialog and loads the current user's keys after success.
      */
     private boolean showAuthenticationDialog() throws Exception {
         JTextField usernameField = new JTextField();
@@ -183,7 +183,7 @@ public class AdminClientApp extends JFrame {
                 continue;
             }
 
-            // 按用户选择调用注册或登录接口，服务端成功后会返回会话信息。
+            // Call register or login based on the user's choice; the server returns session information on success.
             ServerResponse response = (choice == 1)
                     ? serviceClient.register(username, password)
                     : serviceClient.login(username, password);
@@ -197,14 +197,14 @@ public class AdminClientApp extends JFrame {
                 currentUsername = sessionInfo.getUsername();
             }
 
-            // 用户密钥只保存在客户端本地，服务端永远拿不到 DES 密钥和 PEKS 私钥。
+            // User keys are stored only on the client; the server never receives the DES key or PEKS private key.
             keyBundle = keyManager.loadOrCreate(currentUsername);
             return true;
         }
     }
 
     /**
-     * 创建主窗口 UI，并把上传、搜索、文档管理三个页面装配进 Tab。
+     * Creates the main-window UI and assembles the Upload, Search, and Documents pages into tabs.
      */
     private void createUI() {
         setTitle("Searchable Encryption System - Client");
@@ -215,7 +215,7 @@ public class AdminClientApp extends JFrame {
         addWindowListener(new WindowAdapter() {
             @Override
             public void windowClosing(WindowEvent e) {
-                // 关闭窗口时先向服务端注销会话，再释放 socket。
+                // When closing the window, sign out from the server before releasing the socket.
                 logoutAndExit(false);
             }
         });
@@ -232,7 +232,7 @@ public class AdminClientApp extends JFrame {
         headerPanel.setBorder(BorderFactory.createEmptyBorder(8, 12, 8, 12));
         add(headerPanel, BorderLayout.NORTH);
 
-        // 三个页面共享同一条服务端连接、同一组本地密钥和同一个文档操作服务。
+        // The three pages share one server connection, one local key bundle, and one document operation service.
         uploadController = new UploadPanelController(this, serviceClient, operationService, keyBundle, this::refreshDocuments);
         searchController = new SearchPanelController(this, serviceClient, operationService, keyBundle);
         documentsController = new DocumentsPanelController(this, serviceClient, operationService, keyBundle);
@@ -257,7 +257,7 @@ public class AdminClientApp extends JFrame {
         searchController.setBusyStateManager(busyStateManager);
         documentsController.setBusyStateManager(busyStateManager);
 
-        // 把所有会触发网络或文件操作的控件交给忙碌状态管理器统一禁用。
+        // Register every control that can trigger network or file operations so the busy-state manager can disable them consistently.
         List<JComponent> busySensitive = new ArrayList<>();
         busySensitive.addAll(uploadController.getBusySensitiveComponents());
         busySensitive.addAll(searchController.getBusySensitiveComponents());
@@ -270,7 +270,7 @@ public class AdminClientApp extends JFrame {
     }
 
     /**
-     * 刷新文档列表。上传成功后也会调用它让 Documents 页保持同步。
+     * Refreshes the document list. Upload success also calls this to keep the Documents page synchronized.
      */
     private void refreshDocuments() {
         if (documentsController != null) {
@@ -279,7 +279,7 @@ public class AdminClientApp extends JFrame {
     }
 
     /**
-     * 以统一弹窗展示服务端响应。
+     * Displays server responses in a unified dialog.
      */
     private void showResponse(ServerResponse response, String title) {
         JOptionPane.showMessageDialog(
@@ -291,7 +291,7 @@ public class AdminClientApp extends JFrame {
     }
 
     /**
-     * 注销当前会话并退出程序。
+     * Signs out the current session and exits the program.
      */
     private void logoutAndExit(boolean showDialog) {
         boolean forceExit = false;
@@ -314,7 +314,7 @@ public class AdminClientApp extends JFrame {
         }
         try {
             if (!forceExit && serviceClient != null) {
-                // 即使服务端注销失败，finally 中也会关闭本地连接并退出。
+                // Even if server-side logout fails, finally closes the local connection and exits.
                 ServerResponse response = serviceClient.logout();
                 if (showDialog) {
                     showResponse(response, "Logout");
@@ -332,7 +332,7 @@ public class AdminClientApp extends JFrame {
     }
 
     /**
-     * 关闭本地 socket，忽略关闭阶段的异常。
+     * Closes the local socket and ignores errors during shutdown.
      */
     private void closeConnection() {
         try {
@@ -344,7 +344,7 @@ public class AdminClientApp extends JFrame {
     }
 
     /**
-     * Swing 程序入口：安装 FlatLaf 主题后在事件派发线程创建主窗口。
+     * Swing program entry point: installs the FlatLaf theme and creates the main window on the event-dispatch thread.
      */
     public static void main(String[] args) {
         SwingUtilities.invokeLater(() -> {

@@ -9,35 +9,35 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * 关键词抽取工具。
+ * Keyword extraction utility.
  *
- * <p>用于把用户描述、文档正文和文件名统一拆成可搜索 token。返回结果保持插入顺序并去重，
- * 这样既能减少索引数量，也能让测试结果稳定。</p>
+ * <p>Splits user descriptions, document bodies, and file names into searchable tokens. Results preserve insertion order and are deduplicated,
+ * reducing index size and keeping test results stable.</p>
  */
 public final class KeywordExtractor {
 
-    /** 匹配连续字母或数字，包括中文、日文、韩文等 Unicode 字符。 */
+    /** Matches consecutive letters or digits, including Unicode characters such as Chinese, Japanese, and Korean. */
     private static final Pattern WORD_PATTERN = Pattern.compile("[\\p{L}\\p{N}]+");
-    /** 匹配 JSON 中 keyword/keywords/Searchable_Keywords 这类字段里的数组值。 */
+    /** Matches array values in JSON fields such as keyword/keywords/Searchable_Keywords. */
     private static final Pattern JSON_KEYWORD_ARRAY_PATTERN = Pattern.compile(
             "\"(?i:(?:searchable_)?keywords?|keyword)\"\\s*:\\s*\\[(.*?)]",
             Pattern.DOTALL
     );
-    /** 匹配 JSON 中 keyword/keywords/Searchable_Keywords 这类字段里的字符串值。 */
+    /** Matches string values in JSON fields such as keyword/keywords/Searchable_Keywords. */
     private static final Pattern JSON_KEYWORD_STRING_PATTERN = Pattern.compile(
             "\"(?i:(?:searchable_)?keywords?|keyword)\"\\s*:\\s*\"((?:\\\\.|[^\"\\\\])*)\""
     );
-    /** 匹配 JSON 数组中的字符串元素。 */
+    /** Matches string elements in JSON arrays. */
     private static final Pattern JSON_STRING_ITEM_PATTERN = Pattern.compile("\"((?:\\\\.|[^\"\\\\])*)\"");
-    /** 过滤过短 token，避免大量无意义的一字词进入索引。 */
+    /** Filters tokens that are too short to avoid many meaningless one-character terms entering the index. */
     private static final int MIN_TOKEN_LENGTH = 2;
 
-    /** 工具类不需要实例化。 */
+    /** Utility class; instantiation is not needed. */
     private KeywordExtractor() {
     }
 
     /**
-     * 从逗号分隔的输入中抽取关键词，常用于用户手动输入关键词的场景。
+     * Extracts keywords from comma-separated input, commonly used when users manually enter keywords.
      */
     public static List<String> extractCommaSeparated(String input) {
         Set<String> keywords = new LinkedHashSet<>();
@@ -45,7 +45,7 @@ public final class KeywordExtractor {
             return new ArrayList<>();
         }
 
-        // 逐段清洗、转小写、去重，空项和过短项会被 addKeyword 过滤。
+        // Clean, lowercase, and deduplicate segment by segment; empty and too-short items are filtered by addKeyword.
         for (String rawKeyword : input.split(",")) {
             addKeyword(keywords, rawKeyword);
         }
@@ -53,7 +53,7 @@ public final class KeywordExtractor {
     }
 
     /**
-     * 从自然文本中抽取词语，并为中日韩文本额外生成相邻双字片段。
+     * Extracts terms from natural text and additionally generates adjacent two-character fragments for CJK text.
      */
     public static List<String> extractWords(String text) {
         Set<String> keywords = new LinkedHashSet<>();
@@ -63,7 +63,7 @@ public final class KeywordExtractor {
 
         Matcher matcher = WORD_PATTERN.matcher(text);
         while (matcher.find()) {
-            // 英文等空格分词语言直接使用正则匹配到的词；CJK 再补充 bigram。
+            // Whitespace-delimited languages such as English use regex matches directly; CJK gets additional bigrams.
             String word = normalize(matcher.group());
             if (!addKeyword(keywords, word) || !containsCjk(word)) {
                 continue;
@@ -74,7 +74,7 @@ public final class KeywordExtractor {
     }
 
     /**
-     * 从文件名中抽取关键词，包括基础文件名、扩展名和拆分后的片段。
+     * Extracts keywords from file names, including base names, extensions, and split fragments.
      */
     public static List<String> extractFileNameKeywords(String fileName) {
         Set<String> keywords = new LinkedHashSet<>();
@@ -89,7 +89,7 @@ public final class KeywordExtractor {
                 ? normalizedName.substring(extensionSeparator + 1)
                 : "";
 
-        // 先按常见分隔符拆基础名，再补充完整基础名和扩展名。
+        // Split the base name by common separators first, then add the complete base name and extension.
         keywords.addAll(extractWords(baseName.replaceAll("[_\\-\\.\\(\\)\\[\\]\\{\\}]+", " ")));
         addKeyword(keywords, baseName);
         addKeyword(keywords, extension);
@@ -97,7 +97,7 @@ public final class KeywordExtractor {
     }
 
     /**
-     * 从 JSON 文本中定向提取关键词字段，支持 keyword/keywords/Searchable_Keywords。
+     * Extracts keyword fields from JSON text, supporting keyword/keywords/Searchable_Keywords.
      */
     public static List<String> extractJsonKeywordFields(String jsonText) {
         Set<String> keywords = new LinkedHashSet<>();
@@ -128,7 +128,7 @@ public final class KeywordExtractor {
     }
 
     /**
-     * 规范化并加入集合；返回值表示该关键词是否足够长且被接受。
+     * Normalizes and adds a keyword to the set; the return value indicates whether it is long enough and accepted.
      */
     private static boolean addKeyword(Set<String> keywords, String rawKeyword) {
         String keyword = normalize(rawKeyword);
@@ -140,7 +140,7 @@ public final class KeywordExtractor {
     }
 
     /**
-     * 去除首尾空白并转小写，保证上传索引和搜索输入使用同一形式。
+     * Trims surrounding whitespace and lowercases text so upload indexes and search input use the same form.
      */
     private static String normalize(String rawKeyword) {
         if (rawKeyword == null) {
@@ -150,7 +150,7 @@ public final class KeywordExtractor {
     }
 
     /**
-     * 处理 JSON 字符串里的常见转义序列，保证关键词可读且可搜索。
+     * Handles common escape sequences in JSON strings so keywords remain readable and searchable.
      */
     private static String decodeJsonString(String rawValue) {
         if (rawValue == null || rawValue.isEmpty()) {
@@ -195,7 +195,7 @@ public final class KeywordExtractor {
                             i += 4;
                             break;
                         } catch (NumberFormatException ignored) {
-                            // 回退到原样保留，避免异常中断抽取流程。
+                            // Fall back to preserving the original text to avoid interrupting extraction with an exception.
                         }
                     }
                     decoded.append("\\u");
@@ -209,14 +209,14 @@ public final class KeywordExtractor {
     }
 
     /**
-     * 判断词语中是否包含中日韩字符。
+     * Checks whether a term contains Chinese, Japanese, or Korean characters.
      */
     private static boolean containsCjk(String word) {
         return word.codePoints().anyMatch(KeywordExtractor::isCjkCodePoint);
     }
 
     /**
-     * 根据 Unicode Script 判断单个码点是否属于 CJK 范围。
+     * Checks whether one code point belongs to the CJK range by Unicode Script.
      */
     private static boolean isCjkCodePoint(int codePoint) {
         Character.UnicodeScript script = Character.UnicodeScript.of(codePoint);
@@ -227,7 +227,7 @@ public final class KeywordExtractor {
     }
 
     /**
-     * 为 CJK 文本生成相邻两个字符组成的片段，支持用户用局部词搜索长字符串。
+     * Generates adjacent two-character fragments for CJK text so users can search long strings by partial terms.
      */
     private static void addCjkBigrams(Set<String> keywords, String word) {
         int[] codePoints = word.codePoints().toArray();
@@ -235,7 +235,7 @@ public final class KeywordExtractor {
             return;
         }
 
-        // 使用 code point 而不是 char，避免代理对字符被错误拆分。
+        // Use code points instead of chars to avoid splitting surrogate-pair characters incorrectly.
         for (int i = 0; i < codePoints.length - 1; i++) {
             String bigram = new String(codePoints, i, 2);
             addKeyword(keywords, bigram);

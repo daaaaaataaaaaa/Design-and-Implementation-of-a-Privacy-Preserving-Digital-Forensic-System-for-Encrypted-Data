@@ -6,31 +6,31 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * 统一管理客户端繁忙状态：控件禁用、进度条显示、状态文案与等待光标。
+ * Centrally manages client busy state: control disabling, progress bar display, status text, and wait cursor.
  */
 public class UiBusyStateManager {
 
-    /** 主窗口，用于切换等待光标。 */
+    /** Main window used to switch the wait cursor. */
     private final JFrame owner;
-    /** 业务执行期间需要禁用的控件集合。 */
+    /** Controls that must be disabled during business operations. */
     private final List<JComponent> disableWhenBusy = new ArrayList<>();
-    /** 上传页状态文本。 */
+    /** Upload page status text. */
     private final JLabel uploadStatusLabel;
-    /** 上传页进度条。 */
+    /** Upload page progress bar. */
     private final JProgressBar uploadProgressBar;
-    /** 搜索页状态文本。 */
+    /** Search page status text. */
     private final JLabel searchStatusLabel;
-    /** 搜索页进度条。 */
+    /** Search page progress bar. */
     private final JProgressBar searchProgressBar;
-    /** 文档管理页状态文本。 */
+    /** Document management page status text. */
     private final JLabel documentsStatusLabel;
-    /** 文档管理页进度条。 */
+    /** Document management page progress bar. */
     private final JProgressBar documentsProgressBar;
-    /** 当前是否有后台任务正在运行。 */
+    /** Whether a background task is currently running. */
     private boolean busy;
 
     /**
-     * 绑定窗口和三个业务页的状态控件。
+     * Binds the window and status controls for the three business pages.
      */
     public UiBusyStateManager(
             JFrame owner,
@@ -51,19 +51,19 @@ public class UiBusyStateManager {
     }
 
     /**
-     * 注册后台任务执行期间需要统一禁用的控件。
+     * Registers controls that should be disabled uniformly during background tasks.
      */
     public void registerBusySensitiveComponents(List<JComponent> components) {
         disableWhenBusy.clear();
         disableWhenBusy.addAll(components);
     }
 
-    /** 返回当前应用是否处于忙碌状态。 */
+    /** Returns whether the current app is busy. */
     public boolean isBusy() {
         return busy;
     }
 
-    /** 切换上传任务忙碌状态，并只显示上传页进度条。 */
+    /** Toggles upload task busy state and shows only the upload page progress bar. */
     public void setUploadBusy(boolean busy, String statusText) {
         setApplicationBusy(busy);
         toggleProgress(uploadProgressBar, busy);
@@ -76,7 +76,7 @@ public class UiBusyStateManager {
         }
     }
 
-    /** 切换搜索任务忙碌状态，并只显示搜索页进度条。 */
+    /** Toggles search task busy state and shows only the search page progress bar. */
     public void setSearchBusy(boolean busy, String statusText) {
         setApplicationBusy(busy);
         toggleProgress(uploadProgressBar, false);
@@ -89,7 +89,7 @@ public class UiBusyStateManager {
         }
     }
 
-    /** 切换文档管理任务忙碌状态，并只显示文档页进度条。 */
+    /** Toggles document management task busy state and shows only the Documents page progress bar. */
     public void setDocumentsBusy(boolean busy, String statusText) {
         setApplicationBusy(busy);
         toggleProgress(uploadProgressBar, false);
@@ -102,23 +102,23 @@ public class UiBusyStateManager {
         }
     }
 
-    /** 更新上传页状态文本。 */
+    /** Updates the upload page status text. */
     public void updateUploadStatus(String statusText) {
         setLabelText(uploadStatusLabel, statusText);
     }
 
-    /** 更新搜索页状态文本。 */
+    /** Updates the search page status text. */
     public void updateSearchStatus(String statusText) {
         setLabelText(searchStatusLabel, statusText);
     }
 
-    /** 更新文档管理页状态文本。 */
+    /** Updates the document management page status text. */
     public void updateDocumentsStatus(String statusText) {
         setLabelText(documentsStatusLabel, statusText);
     }
 
     /**
-     * 应用级忙碌状态：禁用控件并切换鼠标光标。
+     * App-level busy state: disables controls and switches the mouse cursor.
      */
     private void setApplicationBusy(boolean busy) {
         this.busy = busy;
@@ -131,7 +131,7 @@ public class UiBusyStateManager {
     }
 
     /**
-     * 控制进度条显示和不确定进度动画。
+     * Controls progress bar visibility and indeterminate animation.
      */
     private void toggleProgress(JProgressBar progressBar, boolean visible) {
         if (progressBar == null) {
@@ -142,7 +142,7 @@ public class UiBusyStateManager {
     }
 
     /**
-     * 安全设置状态文本；空文本用单个空格占位，避免布局高度跳动。
+     * Safely sets status text; empty text uses one space to prevent layout height jumps.
      */
     private void setLabelText(JLabel label, String text) {
         if (label == null) {
