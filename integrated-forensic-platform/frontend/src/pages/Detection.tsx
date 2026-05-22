@@ -30,6 +30,21 @@ type DetectionProps = {
   onNavigate: (page: PageKey) => void;
 };
 
+type ForensicEvidenceArtifact = {
+  Evidence_ID: string;
+  Timestamp: string;
+  Searchable_Keywords: string[];
+  Forensic_Metrics: {
+    Protocol: string;
+    Service: string;
+    Connection_State: string;
+    Source_Bytes: number;
+    Destination_Bytes: number;
+    Time_To_Live: number;
+  };
+  Blockchain_SHA256_Hash: string;
+};
+
 const sampleFeatures = {
   dur: 0.121,
   spkts: 6,
@@ -48,10 +63,86 @@ const sampleFeatures = {
   service_dns: 0
 };
 
+function hasFeatureValue(value: unknown) {
+  return value !== undefined && value !== null && String(value).trim() !== "";
+}
+
+function isOneHotEnabled(value: unknown) {
+  if (typeof value === "boolean") {
+    return value;
+  }
+  if (typeof value === "number") {
+    return value === 1;
+  }
+  if (typeof value === "string") {
+    return ["1", "true", "yes"].includes(value.trim().toLowerCase());
+  }
+  return false;
+}
+
+function readFeatureValue(features: Record<string, unknown>, candidates: string[], fallback: unknown) {
+  for (const key of candidates) {
+    const value = features[key];
+    if (hasFeatureValue(value)) {
+      return value;
+    }
+  }
+  return fallback;
+}
+
+function readNumericFeature(features: Record<string, unknown>, candidates: string[], fallback = 0) {
+  const value = readFeatureValue(features, candidates, fallback);
+  const numericValue = Number(value);
+  return Number.isFinite(numericValue) ? numericValue : fallback;
+}
+
+function inferCategoricalFeature(
+  features: Record<string, unknown>,
+  directKeys: string[],
+  oneHotPrefix: string,
+  fallback: string
+) {
+  const directValue = readFeatureValue(features, directKeys, "");
+  if (hasFeatureValue(directValue)) {
+    return String(directValue);
+  }
+
+  const prefix = `${oneHotPrefix}_`;
+  const match = Object.entries(features).find(([key, value]) => key.startsWith(prefix) && isOneHotEnabled(value));
+  return match ? match[0].slice(prefix.length) : fallback;
+}
+
+function buildForensicEvidenceArtifact(
+  evidenceId: string,
+  features: Record<string, unknown>,
+  prediction: PredictionResult
+): ForensicEvidenceArtifact {
+  const protocol = inferCategoricalFeature(features, ["protocol", "Protocol", "proto"], "proto", "unknown");
+  const service = inferCategoricalFeature(features, ["service", "Service"], "service", "-");
+  const state = inferCategoricalFeature(features, ["state", "State", "connection_state"], "state", "unknown");
+
+  return {
+    Evidence_ID: evidenceId,
+    Timestamp: new Date().toISOString(),
+    Searchable_Keywords: [`PROTOCOL:${protocol}`, `SERVICE:${service}`, `STATE:${state}`],
+    Forensic_Metrics: {
+      Protocol: protocol,
+      Service: service,
+      Connection_State: state,
+      Source_Bytes: readNumericFeature(features, ["sbytes", "source_bytes", "Source_Bytes"]),
+      Destination_Bytes: readNumericFeature(features, ["dbytes", "destination_bytes", "Destination_Bytes"]),
+      Time_To_Live: readNumericFeature(features, ["sttl", "ttl", "time_to_live", "Time_To_Live"])
+    },
+    Blockchain_SHA256_Hash: prediction.evidence_hash
+  };
+}
+
 export function Detection({ authToken, onNavigate }: DetectionProps) {
   const [featuresText, setFeaturesText] = useState(JSON.stringify(sampleFeatures, null, 2));
   const [submittedFeatures, setSubmittedFeatures] = useState<Record<string, unknown> | null>(null);
   const [result, setResult] = useState<PredictionResult | null>(null);
+  const [evidenceArtifact, setEvidenceArtifact] = useState<ForensicEvidenceArtifact | null>(null);
+  const [nextEvidenceIndex, setNextEvidenceIndex] = useState(0);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [mlStatus, setMlStatus] = useState<MlServiceStatus | null>(null);
@@ -102,7 +193,7 @@ export function Detection({ authToken, onNavigate }: DetectionProps) {
     event.preventDefault();
     setError("");
     if (!mlRunning) {
-      setError("Start ML before running detection.");
+      setError("Start ML before running data analysis.");
       return;
     }
     setLoading(true);
@@ -114,9 +205,11 @@ export function Detection({ authToken, onNavigate }: DetectionProps) {
       });
       setResult(response);
       setSubmittedFeatures(parsed);
+      setEvidenceArtifact(buildForensicEvidenceArtifact(`EVID-${nextEvidenceIndex}`, parsed, response));
+      setNextEvidenceIndex((value) => value + 1);
       resetPreservationState();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Prediction failed");
+      setError(err instanceof Error ? err.message : "Data analysis failed");
     } finally {
       setLoading(false);
     }
@@ -176,33 +269,10 @@ export function Detection({ authToken, onNavigate }: DetectionProps) {
     return fallback;
   }
 
-  function buildEvidencePayload(docId: string, features: Record<string, unknown>, prediction: PredictionResult) {
-    return {
-      Evidence_ID: docId,
-      Timestamp: new Date().toISOString(),
-      Evidence_Type: "Network intrusion detection result",
-      Prediction: prediction.prediction,
-      Probability: prediction.probability ?? {},
-      Forensic_Metrics: {
-        filled_feature_count: prediction.filled_feature_count,
-        missing_feature_count: prediction.missing_feature_count
-      },
-      Detection_Features: features,
-      Blockchain_SHA256_Hash: prediction.evidence_hash,
-      Searchable_Keywords: [
-        "detection",
-        "intrusion",
-        "prediction",
-        String(prediction.prediction),
-        prediction.evidence_hash.slice(0, 12)
-      ]
-    };
-  }
-
   async function preserveResult() {
     if (!result || !submittedFeatures) {
       setPreservationStage("error");
-      setPreservationStatus("Run detection first to generate an evidence hash before saving.");
+      setPreservationStatus("Run data analysis first to generate an evidence hash before saving.");
       return;
     }
     if (!contractAddress.trim()) {
@@ -223,13 +293,13 @@ export function Detection({ authToken, onNavigate }: DetectionProps) {
 
     try {
       const docId = createEvidenceDocId(result.evidence_hash);
-      const evidencePayload = buildEvidencePayload(docId, submittedFeatures, result);
+      const evidencePayload = buildForensicEvidenceArtifact(docId, submittedFeatures, result);
       const token = await ensureVaultToken();
       const form = new FormData();
       form.set("docId", docId);
       form.set(
         "description",
-        `intrusion detection ${String(result.prediction)} evidence ${result.evidence_hash}`
+        `forensic data analysis ${String(result.prediction)} evidence ${result.evidence_hash}`
       );
       form.set("text", JSON.stringify(evidencePayload, null, 2));
 
@@ -246,7 +316,7 @@ export function Detection({ authToken, onNavigate }: DetectionProps) {
       const tx = await contract.storeJSONEvidence(
         savedDocument.docId,
         result.evidence_hash,
-        "IDS Detection Result",
+        "Forensic Data Analysis Result",
         `Encrypted vault record ${savedDocument.docId}; prediction ${String(result.prediction)}`,
         savedDocument.fileName,
         String(result.prediction),
@@ -271,7 +341,7 @@ export function Detection({ authToken, onNavigate }: DetectionProps) {
       <div className="page-header">
         <div>
           <p className="eyebrow">UNSW-NB15 model facade</p>
-          <h1>Intrusion Detection</h1>
+          <h1>Forensic Data Analysis</h1>
         </div>
       </div>
 
@@ -279,7 +349,7 @@ export function Detection({ authToken, onNavigate }: DetectionProps) {
         <div className="ml-gate">
           <div>
             <strong>ML service is offline</strong>
-            <span>Start it once to enable network traffic prediction.</span>
+            <span>Start it once to enable network traffic analysis.</span>
           </div>
           <button className="primary-action" type="button" onClick={startMl} disabled={startingMl}>
             <Play size={17} /> {startingMl ? "Starting ML" : "Start ML"}
@@ -301,7 +371,7 @@ export function Detection({ authToken, onNavigate }: DetectionProps) {
           />
           <div className="button-row">
             <button className="primary-action" type="submit" disabled={loading || !mlRunning}>
-              <Play size={17} /> {loading ? "Detecting" : "Run Detection"}
+              <Play size={17} /> {loading ? "Analyzing" : "Run Analysis"}
             </button>
             <button
               className="secondary-action"
@@ -310,6 +380,7 @@ export function Detection({ authToken, onNavigate }: DetectionProps) {
                 setFeaturesText(JSON.stringify(sampleFeatures, null, 2));
                 setSubmittedFeatures(null);
                 setResult(null);
+                setEvidenceArtifact(null);
                 setError("");
                 resetPreservationState();
               }}
@@ -322,7 +393,7 @@ export function Detection({ authToken, onNavigate }: DetectionProps) {
 
         <section className="panel">
           <div className="panel-heading">
-            <h2>Detection Results</h2>
+            <h2>Data Analysis Results</h2>
           </div>
           {result ? (
             <div className="result-stack">
@@ -344,6 +415,15 @@ export function Detection({ authToken, onNavigate }: DetectionProps) {
                       <strong>{(value * 100).toFixed(1)}%</strong>
                     </div>
                   ))}
+                </div>
+              )}
+              {evidenceArtifact && (
+                <div className="evidence-artifact">
+                  <div className="panel-heading compact-heading">
+                    <h2>Forensic Evidence JSON Artifact</h2>
+                    <span className="pill">{evidenceArtifact.Evidence_ID}</span>
+                  </div>
+                  <pre className="json-artifact"><code>{JSON.stringify(evidenceArtifact, null, 2)}</code></pre>
                 </div>
               )}
               <div className="preservation-flow">
@@ -388,7 +468,7 @@ export function Detection({ authToken, onNavigate }: DetectionProps) {
               </div>
             </div>
           ) : (
-          <div className="empty-state">Run detection once to show the predicted class, probability, and hash for on-chain evidence anchoring.</div>
+          <div className="empty-state">Run analysis once to show the predicted class, probability, structured evidence JSON, and hash for on-chain evidence anchoring.</div>
           )}
         </section>
       </form>

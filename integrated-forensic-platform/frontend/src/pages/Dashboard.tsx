@@ -22,7 +22,7 @@ type MlCheckFeedback = {
 } | null;
 
 const steps: WorkflowStep[] = [
-  { icon: <Network size={19} />, title: "Detect", text: "Score network traffic and produce evidence records.", target: "detection" },
+  { icon: <Network size={19} />, title: "Analyze", text: "Score network traffic and produce evidence records.", target: "detection" },
   { icon: <ShieldCheck size={19} />, title: "Explain", text: "Attach SHAP, LIME, permutation, and PDP context.", target: "explainability" },
   { icon: <LockKeyhole size={19} />, title: "Encrypt", text: "Store evidence through searchable encryption.", target: "vault" },
   { icon: <Blocks size={19} />, title: "Notarize", text: "Commit SHA-256 fingerprints on chain.", target: "blockchain" }
@@ -132,7 +132,7 @@ export function Dashboard({ authToken, onNavigate }: DashboardProps) {
             <RefreshCw className={checkingMl ? "spin" : undefined} size={17} /> {checkingMl ? "Checking ML" : "Check ML"}
           </button>
           <button className="primary-action" onClick={() => onNavigate("detection")}>
-            Start Detection <ArrowRight size={17} />
+            Start Analysis <ArrowRight size={17} />
           </button>
         </div>
       </div>
@@ -162,7 +162,7 @@ export function Dashboard({ authToken, onNavigate }: DashboardProps) {
         <div className="ml-gate">
           <div>
             <strong>ML service is offline</strong>
-            <span>Start it once to enable detection, reports, and explanation assets across the workbench.</span>
+            <span>Start it once to enable analysis, reports, and explanation assets across the workbench.</span>
           </div>
           <button className="primary-action" type="button" onClick={startMl} disabled={startingMl}>
             <Play size={17} /> {startingMl ? "Starting ML" : "Start ML"}
