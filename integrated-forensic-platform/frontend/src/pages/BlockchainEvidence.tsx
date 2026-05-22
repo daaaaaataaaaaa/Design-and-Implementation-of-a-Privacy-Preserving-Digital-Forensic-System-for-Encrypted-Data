@@ -15,7 +15,7 @@ type EthereumWindow = Window & {
 export function BlockchainEvidence() {
   const evidenceFileInputRef = useRef<HTMLInputElement>(null);
   const [account, setAccount] = useState("");
-  const [contractAddress, setContractAddress] = useState("0x合约地址-硬编码 演示的时候记得改这里");
+  const [contractAddress, setContractAddress] = useState(getDefaultEvidenceRegistryAddress);
   const [caseId, setCaseId] = useState("CASE-001");
   const [evidenceName, setEvidenceName] = useState("Forensic Evidence Report");
   const [fileName, setFileName] = useState("evidence.json");
@@ -148,7 +148,11 @@ export function BlockchainEvidence() {
             <Blocks size={18} />
           </div>
           <label>Contract Address</label>
-          <input value={contractAddress} onChange={(event) => updateContractAddress(event.target.value)} />
+          <input
+            value={contractAddress}
+            onChange={(event) => updateContractAddress(event.target.value)}
+            placeholder="Enter deployed EvidenceRegistry contract address"
+          />
           <label>Evidence File</label>
           <input
             ref={evidenceFileInputRef}
