@@ -812,6 +812,13 @@ textarea {
   background: #fbfdff;
 }
 
+.field-hint {
+  margin: 7px 0 12px;
+  color: #66748a;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
 textarea {
   min-height: 110px;
   resize: vertical;
@@ -1974,31 +1981,6 @@ th {
   background: #ffffff;
 }
 
-.vault-workbench .se-header-status {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.vault-workbench .se-status-pill {
-  display: inline-flex;
-  align-items: center;
-  min-height: 30px;
-  border: 1px solid #d3dce8;
-  border-radius: 999px;
-  padding: 4px 12px;
-  background: #f6f8fb;
-  color: #43526a;
-  font-size: 13px;
-  font-weight: 700;
-}
-
-.vault-workbench .se-status-pill.success {
-  border-color: #b8d8c5;
-  background: #edf8f1;
-  color: #17683a;
-}
-
 .vault-workbench .se-login-form {
   grid-template-columns: minmax(160px, 220px) minmax(160px, 220px) auto auto 1fr;
   font-size: 13px;
@@ -2162,11 +2144,6 @@ th {
     grid-template-columns: 1fr;
   }
 
-  .se-header-status {
-    align-items: flex-start;
-    flex-direction: column;
-  }
-
   .se-tabs {
     overflow-x: auto;
   }
@@ -2214,7 +2191,6 @@ th {
     font-size: 13px;
   }
 
-  .se-status-pill,
   .se-tabs button,
   .se-form-grid > label,
   .se-description-row > span,

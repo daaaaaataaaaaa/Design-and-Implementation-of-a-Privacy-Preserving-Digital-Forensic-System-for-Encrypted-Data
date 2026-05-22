@@ -131,11 +131,6 @@ export function Dashboard({ authToken, onNavigate }: DashboardProps) {
           <button className="secondary-action" type="button" onClick={() => refreshMlStatus()} disabled={checkingMl}>
             <RefreshCw className={checkingMl ? "spin" : undefined} size={17} /> {checkingMl ? "Checking ML" : "Check ML"}
           </button>
-          {!mlRunning && (
-            <button className="primary-action" type="button" onClick={startMl} disabled={startingMl}>
-              <Play size={17} /> {startingMl ? "Starting ML" : "Start ML"}
-            </button>
-          )}
           <button className="primary-action" onClick={() => onNavigate("detection")}>
             Start Detection <ArrowRight size={17} />
           </button>
@@ -166,8 +161,8 @@ export function Dashboard({ authToken, onNavigate }: DashboardProps) {
       {!mlRunning && (
         <div className="ml-gate">
           <div>
-            <strong>ML functions are off</strong>
-            <span>Start the ML service after login to enable detection, reports, and explanation assets.</span>
+            <strong>ML service is offline</strong>
+            <span>Start it once to enable detection, reports, and explanation assets across the workbench.</span>
           </div>
           <button className="primary-action" type="button" onClick={startMl} disabled={startingMl}>
             <Play size={17} /> {startingMl ? "Starting ML" : "Start ML"}

@@ -6,6 +6,7 @@ export const evidenceRegistryAbi = [
 ];
 
 const contractAddressStorageKey = "evidence_registry_address";
+const walletAccountStorageKey = "evidence_wallet_account";
 
 export function getDefaultEvidenceRegistryAddress() {
   if (typeof window === "undefined") {
@@ -21,6 +22,23 @@ export function rememberEvidenceRegistryAddress(address: string) {
     localStorage.setItem(contractAddressStorageKey, normalized);
   } else {
     localStorage.removeItem(contractAddressStorageKey);
+  }
+}
+
+export function getRememberedWalletAccount() {
+  if (typeof window === "undefined") {
+    return "";
+  }
+  return sessionStorage.getItem(walletAccountStorageKey) ?? "";
+}
+
+export function rememberWalletAccount(account: string) {
+  if (typeof window === "undefined") return;
+  const normalized = account.trim();
+  if (normalized) {
+    sessionStorage.setItem(walletAccountStorageKey, normalized);
+  } else {
+    sessionStorage.removeItem(walletAccountStorageKey);
   }
 }
 

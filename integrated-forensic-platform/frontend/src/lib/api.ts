@@ -125,6 +125,12 @@ export function persistAuthSession(response: AuthResponse) {
   localStorage.setItem(AUTH_USER_KEY, response.username);
 }
 
+export function loadAuthSession(): AuthResponse | null {
+  const token = localStorage.getItem(AUTH_TOKEN_KEY);
+  const username = localStorage.getItem(AUTH_USER_KEY);
+  return token && username ? { token, username } : null;
+}
+
 export function clearAuthSession() {
   localStorage.removeItem(AUTH_TOKEN_KEY);
   localStorage.removeItem(AUTH_USER_KEY);
@@ -159,13 +165,36 @@ export function resetPlatformPassword(username: string, recoveryCode: string, ne
   });
 }
 
-export function getMlServiceStatus() {
-  return jsonRequest<MlServiceStatus>(`${SE_API}/api/ml-control/status`);
+async function getDirectMlServiceStatus(proxyError?: unknown): Promise<MlServiceStatus> {
+  const metadata = await jsonRequest<MlMetadata>(`${ML_API}/api/ml/metadata`);
+  const proxyMessage = proxyError instanceof Error ? ` Proxy check failed: ${proxyError.message}` : "";
+  return {
+    running: true,
+    status: "running",
+    apiUrl: ML_API,
+    message: `ML service is available directly with ${metadata.feature_count} features loaded.${proxyMessage}`
+  };
+}
+
+export async function getMlServiceStatus() {
+  try {
+    return await jsonRequest<MlServiceStatus>(`${SE_API}/api/ml-control/status`);
+  } catch (error) {
+    return getDirectMlServiceStatus(error);
+  }
 }
 
 export async function startMlService(token: string) {
-  return jsonRequest<MlServiceStatus>(`${SE_API}/api/ml-control/start`, {
-    method: "POST",
-    headers: authHeader(token)
-  });
+  try {
+    return await jsonRequest<MlServiceStatus>(`${SE_API}/api/ml-control/start`, {
+      method: "POST",
+      headers: authHeader(token)
+    });
+  } catch (error) {
+    try {
+      return await getDirectMlServiceStatus(error);
+    } catch {
+      throw error;
+    }
+  }
 }

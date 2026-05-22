@@ -1,20 +1,31 @@
 import { ethers } from "ethers";
-import { Blocks, Link, SearchCheck, Upload } from "lucide-react";
-import { useRef, useState } from "react";
+import { Blocks, Link, Loader2, SearchCheck, Upload } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import {
   evidenceRegistryAbi,
   getDefaultEvidenceRegistryAddress,
+  getRememberedWalletAccount,
   rememberEvidenceRegistryAddress,
+  rememberWalletAccount,
   sha256Hex
 } from "../lib/blockchain";
 
-type EthereumWindow = Window & {
-  ethereum?: ethers.Eip1193Provider;
+type EthereumProvider = ethers.Eip1193Provider & {
+  on?: (event: "accountsChanged", listener: (accounts: string[]) => void) => void;
+  removeListener?: (event: "accountsChanged", listener: (accounts: string[]) => void) => void;
 };
+
+type EthereumWindow = Window & {
+  ethereum?: EthereumProvider;
+};
+
+type NoticeTone = "info" | "success" | "danger";
+type PendingAction = "store" | "verify" | "";
 
 export function BlockchainEvidence() {
   const evidenceFileInputRef = useRef<HTMLInputElement>(null);
-  const [account, setAccount] = useState("");
+  const hashInputRef = useRef<HTMLTextAreaElement>(null);
+  const [account, setAccount] = useState(getRememberedWalletAccount);
   const [contractAddress, setContractAddress] = useState(getDefaultEvidenceRegistryAddress);
   const [caseId, setCaseId] = useState("CASE-001");
   const [evidenceName, setEvidenceName] = useState("Forensic Evidence Report");
@@ -25,36 +36,100 @@ export function BlockchainEvidence() {
   const [description, setDescription] = useState("Hash notarization for encrypted forensic evidence");
   const [hash, setHash] = useState("");
   const [status, setStatus] = useState("");
+  const [statusTone, setStatusTone] = useState<NoticeTone>("info");
+  const [pendingAction, setPendingAction] = useState<PendingAction>("");
   const [selectedFileName, setSelectedFileName] = useState("");
+
+  function showStatus(message: string, tone: NoticeTone = "info") {
+    setStatus(message);
+    setStatusTone(tone);
+  }
+
+  function getBlockchainErrorMessage(error: unknown, fallback: string) {
+    if (!(error instanceof Error)) {
+      return fallback;
+    }
+    if (error.message.includes("BAD_DATA") || error.message.includes("could not decode result data")) {
+      return "The contract at this address did not return a valid EvidenceRegistry response. Make sure the Contract Address is the deployed EvidenceRegistry contract, not a wallet/account address, and that MetaMask is on the matching Ganache network.";
+    }
+    return error.message;
+  }
+
+  function updateWalletAccount(nextAccount: string) {
+    setAccount(nextAccount);
+    rememberWalletAccount(nextAccount);
+  }
+
+  useEffect(() => {
+    const ethereumProvider = (window as EthereumWindow).ethereum;
+    if (!ethereumProvider) return;
+    const walletProvider: EthereumProvider = ethereumProvider;
+
+    let mounted = true;
+
+    async function syncWalletAccount() {
+      try {
+        const accounts = (await walletProvider.request({ method: "eth_accounts" })) as string[];
+        if (mounted) {
+          updateWalletAccount(accounts[0] ?? "");
+        }
+      } catch {
+        if (mounted) {
+          updateWalletAccount("");
+        }
+      }
+    }
+
+    function handleAccountsChanged(accounts: string[]) {
+      const nextAccount = accounts[0] ?? "";
+      updateWalletAccount(nextAccount);
+      showStatus(nextAccount ? "Wallet connected." : "Wallet disconnected.", nextAccount ? "success" : "info");
+    }
+
+    syncWalletAccount();
+    walletProvider.on?.("accountsChanged", handleAccountsChanged);
+
+    return () => {
+      mounted = false;
+      walletProvider.removeListener?.("accountsChanged", handleAccountsChanged);
+    };
+  }, []);
 
   async function getContract(withSigner = false) {
     const ethereum = (window as EthereumWindow).ethereum;
     if (!ethereum) {
       throw new Error("No Ethereum provider detected. Start Ganache and connect MetaMask.");
     }
-    if (!ethers.isAddress(contractAddress.trim())) {
+    const normalizedContractAddress = contractAddress.trim();
+    if (!ethers.isAddress(normalizedContractAddress)) {
       throw new Error("Enter a valid EvidenceRegistry contract address first.");
     }
     const provider = new ethers.BrowserProvider(ethereum);
+    const deployedCode = await provider.getCode(normalizedContractAddress);
+    if (deployedCode === "0x") {
+      throw new Error(
+        "No EvidenceRegistry contract was found at this address. Paste the deployed contract address, not your wallet account address, and check that MetaMask is on the same Ganache network."
+      );
+    }
     if (withSigner) {
       const signer = await provider.getSigner();
-      return new ethers.Contract(contractAddress.trim(), evidenceRegistryAbi, signer);
+      return new ethers.Contract(normalizedContractAddress, evidenceRegistryAbi, signer);
     }
-    return new ethers.Contract(contractAddress.trim(), evidenceRegistryAbi, provider);
+    return new ethers.Contract(normalizedContractAddress, evidenceRegistryAbi, provider);
   }
 
   async function connectWallet() {
     const ethereum = (window as EthereumWindow).ethereum;
     if (!ethereum) {
-      setStatus("MetaMask or a browser wallet was not detected.");
+      showStatus("MetaMask or a browser wallet was not detected.", "danger");
       return;
     }
     try {
       const accounts = (await ethereum.request({ method: "eth_requestAccounts" })) as string[];
-      setAccount(accounts[0] ?? "");
-      setStatus(accounts[0] ? "Wallet connected." : "No wallet account selected.");
+      updateWalletAccount(accounts[0] ?? "");
+      showStatus(accounts[0] ? "Wallet connected." : "No wallet account selected.", accounts[0] ? "success" : "info");
     } catch (err) {
-      setStatus(err instanceof Error ? err.message : "Failed to connect wallet.");
+      showStatus(err instanceof Error ? err.message : "Failed to connect wallet.", "danger");
     }
   }
 
@@ -77,6 +152,9 @@ export function BlockchainEvidence() {
     if (!ethers.isAddress(contractAddress.trim())) {
       return "The contract address is invalid. It must be an Ethereum address starting with 0x.";
     }
+    if (account && contractAddress.trim().toLowerCase() === account.toLowerCase()) {
+      return "This is the connected wallet account. Paste the deployed EvidenceRegistry contract address from Remix instead.";
+    }
     if (!hash.trim()) {
       return "Select an evidence file first, or paste a 64-character SHA-256 hash.";
     }
@@ -86,13 +164,22 @@ export function BlockchainEvidence() {
     return "";
   }
 
+  function focusHashInput() {
+    window.setTimeout(() => hashInputRef.current?.focus(), 0);
+  }
+
   async function storeEvidence() {
-    setStatus("");
+    showStatus("");
     const validationMessage = validateEvidenceInput();
     if (validationMessage) {
-      setStatus(validationMessage);
+      showStatus(validationMessage, "danger");
+      if (!hash.trim() || !/^[a-fA-F0-9]{64}$/.test(hash.trim())) {
+        focusHashInput();
+      }
       return;
     }
+    setPendingAction("store");
+    showStatus("Submitting evidence hash to the EvidenceRegistry contract...");
     try {
       const contract = await getContract(true);
       const tx = await contract.storeJSONEvidence(
@@ -105,27 +192,41 @@ export function BlockchainEvidence() {
         sourceIp,
         targetUrl
       );
-      setStatus(`Transaction submitted: ${tx.hash}`);
+      showStatus(`Transaction submitted: ${tx.hash}`);
       await tx.wait();
-      setStatus(`On-chain evidence anchoring completed: ${tx.hash}`);
+      showStatus(`On-chain evidence anchoring completed: ${tx.hash}`, "success");
     } catch (err) {
-      setStatus(err instanceof Error ? err.message : "Store transaction failed");
+      showStatus(getBlockchainErrorMessage(err, "Store transaction failed"), "danger");
+    } finally {
+      setPendingAction("");
     }
   }
 
   async function verifyEvidence() {
-    setStatus("");
+    showStatus("");
     const validationMessage = validateEvidenceInput();
     if (validationMessage) {
-      setStatus(validationMessage);
+      showStatus(validationMessage, "danger");
+      if (!hash.trim() || !/^[a-fA-F0-9]{64}$/.test(hash.trim())) {
+        focusHashInput();
+      }
       return;
     }
+    setPendingAction("verify");
+    showStatus("Checking this SHA-256 hash on chain...");
     try {
       const contract = await getContract(false);
       const exists = await contract.verifyEvidence(hash.trim());
-      setStatus(exists ? "Verification passed: this hash already exists on-chain." : "Evidence hash not found.");
+      showStatus(
+        exists
+          ? "Verification passed: this hash already exists on-chain."
+          : "Evidence hash not found on chain. Submit it first if this evidence should be notarized.",
+        exists ? "success" : "info"
+      );
     } catch (err) {
-      setStatus(err instanceof Error ? err.message : "Verification failed");
+      showStatus(getBlockchainErrorMessage(err, "Verification failed"), "danger");
+    } finally {
+      setPendingAction("");
     }
   }
 
@@ -147,12 +248,15 @@ export function BlockchainEvidence() {
           <h2>Contract and Hash</h2>
             <Blocks size={18} />
           </div>
-          <label>Contract Address</label>
+          <label>EvidenceRegistry Contract Address</label>
           <input
             value={contractAddress}
             onChange={(event) => updateContractAddress(event.target.value)}
-            placeholder="Enter deployed EvidenceRegistry contract address"
+            placeholder="Paste the deployed EvidenceRegistry address from Remix"
           />
+          <p className="field-hint">
+            Wallet account: {account ? `${account.slice(0, 6)}...${account.slice(-4)}` : "not connected"}. This field needs the contract address from Remix Deployed Contracts.
+          </p>
           <label>Evidence File</label>
           <input
             ref={evidenceFileInputRef}
@@ -168,16 +272,16 @@ export function BlockchainEvidence() {
             <span className="file-picker-name">{selectedFileName || "No file selected"}</span>
           </div>
           <label>SHA-256 Hash</label>
-        <textarea value={hash} onChange={(event) => setHash(event.target.value.trim())} placeholder="Select a file to calculate automatically, or paste a 64-character SHA-256 hash" />
+        <textarea ref={hashInputRef} value={hash} onChange={(event) => setHash(event.target.value.trim())} placeholder="Select a file to calculate automatically, or paste a 64-character SHA-256 hash" />
           <div className="button-row">
-            <button className="primary-action" type="button" onClick={storeEvidence}>
-            <Upload size={17} /> Submit Evidence
+            <button className="primary-action" type="button" onClick={storeEvidence} disabled={Boolean(pendingAction)}>
+            {pendingAction === "store" ? <Loader2 className="spin" size={17} /> : <Upload size={17} />} {pendingAction === "store" ? "Submitting" : "Submit Evidence"}
             </button>
-            <button className="secondary-action" type="button" onClick={verifyEvidence}>
-            <SearchCheck size={17} /> Verify
+            <button className="secondary-action" type="button" onClick={verifyEvidence} disabled={Boolean(pendingAction)}>
+            {pendingAction === "verify" ? <Loader2 className="spin" size={17} /> : <SearchCheck size={17} />} {pendingAction === "verify" ? "Checking" : "Check Hash"}
             </button>
           </div>
-          {status && <div className="notice">{status}</div>}
+          {status && <div className={`notice ${statusTone}`}>{status}</div>}
         </section>
 
         <section className="panel">

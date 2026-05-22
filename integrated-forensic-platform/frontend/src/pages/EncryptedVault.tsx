@@ -43,6 +43,73 @@ type DocumentBlob = {
 
 type FileKind = "image" | "pdf" | "text" | "spreadsheet" | "document" | "archive" | "code" | "file";
 const MAX_INLINE_TEXT_PREVIEW_BYTES = 10 * 1024 * 1024;
+const NOTICE_AUTO_DISMISS_MS = 4500;
+const VAULT_NOTICE_STORAGE_KEY = "forensic_vault_notice";
+const VAULT_PENDING_STORAGE_KEY = "forensic_vault_pending_action";
+const VAULT_STATUS_EVENT = "forensic-vault-status-change";
+const pendingActionValues = new Set<PendingAction>([
+  "idle",
+  "auth",
+  "load",
+  "upload",
+  "search",
+  "open",
+  "delete",
+  "download",
+  "rebuild"
+]);
+
+type StoredVaultNotice = {
+  message: string;
+  tone: NoticeTone;
+};
+
+function isNoticeTone(value: unknown): value is NoticeTone {
+  return value === "info" || value === "success" || value === "danger";
+}
+
+function isPendingAction(value: unknown): value is PendingAction {
+  return typeof value === "string" && pendingActionValues.has(value as PendingAction);
+}
+
+function loadStoredVaultNotice(): StoredVaultNotice | null {
+  const raw = sessionStorage.getItem(VAULT_NOTICE_STORAGE_KEY);
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as Partial<StoredVaultNotice>;
+    if (typeof parsed.message === "string" && parsed.message && isNoticeTone(parsed.tone)) {
+      return { message: parsed.message, tone: parsed.tone };
+    }
+  } catch {
+    // Ignore invalid persisted UI state.
+  }
+  return null;
+}
+
+function loadStoredPendingAction(): PendingAction {
+  const stored = sessionStorage.getItem(VAULT_PENDING_STORAGE_KEY);
+  return isPendingAction(stored) ? stored : "idle";
+}
+
+function storeVaultNotice(message: string, tone: NoticeTone) {
+  if (!message) {
+    sessionStorage.removeItem(VAULT_NOTICE_STORAGE_KEY);
+    return;
+  }
+  sessionStorage.setItem(VAULT_NOTICE_STORAGE_KEY, JSON.stringify({ message, tone }));
+}
+
+function storePendingAction(action: PendingAction) {
+  if (action === "idle") {
+    sessionStorage.removeItem(VAULT_PENDING_STORAGE_KEY);
+    return;
+  }
+  sessionStorage.setItem(VAULT_PENDING_STORAGE_KEY, action);
+}
+
+function dispatchVaultStatusChange() {
+  window.dispatchEvent(new Event(VAULT_STATUS_EVENT));
+}
 
 function generateDocumentId() {
   const bytes = new Uint8Array(16);
@@ -393,6 +460,8 @@ function PreviewContent({
 }
 
 export function EncryptedVault({ authToken, currentUser, onSessionExpired }: EncryptedVaultProps) {
+  const initialVaultNotice = useMemo(() => loadStoredVaultNotice(), []);
+  const initialPendingAction = useMemo(() => loadStoredPendingAction(), []);
   const [token, setToken] = useState(authToken);
   const [activeTab, setActiveTab] = useState<VaultTab>("upload");
   const [documents, setDocuments] = useState<DocumentSummary[]>([]);
@@ -410,16 +479,20 @@ export function EncryptedVault({ authToken, currentUser, onSessionExpired }: Enc
   const [keyword, setKeyword] = useState("");
   const [lastSearchKeyword, setLastSearchKeyword] = useState("");
   const [actionDocId, setActionDocId] = useState("");
-  const [message, setMessage] = useState(`Encrypted vault connected as ${currentUser}.`);
-  const [noticeTone, setNoticeTone] = useState<NoticeTone>("info");
-  const [pendingAction, setPendingAction] = useState<PendingAction>("idle");
+  const [message, setMessage] = useState(
+    initialVaultNotice?.message ?? (initialPendingAction !== "idle" ? "Vault operation is still running..." : "")
+  );
+  const [noticeTone, setNoticeTone] = useState<NoticeTone>(initialVaultNotice?.tone ?? "info");
+  const [pendingAction, setPendingActionState] = useState<PendingAction>(initialPendingAction);
   const [importMenuOpen, setImportMenuOpen] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const folderInputRef = useRef<HTMLInputElement | null>(null);
   const busy = pendingAction !== "idle";
   const loggedIn = Boolean(token);
-  const noticeClass = noticeTone === "info" ? "se-status" : `se-status ${noticeTone}`;
+  const statusMessage = message || (loggedIn ? `Connected: ${currentUser}` : "Not connected");
+  const statusTone: NoticeTone = message ? noticeTone : loggedIn ? "success" : "info";
+  const noticeClass = statusTone === "info" ? "se-status" : `se-status ${statusTone}`;
   const activeHighlightKeyword = hasSearched ? lastSearchKeyword : "";
   const previewMatchCount = useMemo(() => {
     return selectedDetail ? countPreviewMatches(selectedDetail, previewFindKeyword) : 0;
@@ -440,8 +513,16 @@ export function EncryptedVault({ authToken, currentUser, onSessionExpired }: Enc
   const allDocumentsSelected = documents.length > 0 && selectedVisibleCount === documents.length;
 
   function showMessage(nextMessage: string, tone: NoticeTone = "info") {
+    storeVaultNotice(nextMessage, tone);
     setMessage(nextMessage);
     setNoticeTone(tone);
+    dispatchVaultStatusChange();
+  }
+
+  function updatePendingAction(nextAction: PendingAction) {
+    storePendingAction(nextAction);
+    setPendingActionState(nextAction);
+    dispatchVaultStatusChange();
   }
 
   function describeError(error: unknown) {
@@ -491,7 +572,7 @@ export function EncryptedVault({ authToken, currentUser, onSessionExpired }: Enc
     }
 
     if (!quiet) {
-      setPendingAction("load");
+      updatePendingAction("load");
       showMessage("Refreshing document list...", "info");
     }
     try {
@@ -499,13 +580,19 @@ export function EncryptedVault({ authToken, currentUser, onSessionExpired }: Enc
         headers: authHeader(nextToken)
       });
       setDocuments(response);
-      if (!quiet) showMessage(`Loaded ${response.length} document(s).`, "success");
+      if (quiet) {
+        if (loadStoredPendingAction() === "idle") {
+          showMessage("", "info");
+        }
+      } else {
+        showMessage(`Loaded ${response.length} document(s).`, "success");
+      }
       return true;
     } catch (error) {
       showMessage(`Refresh failed: ${normalizeSessionError(describeError(error))}`, "danger");
       return false;
     } finally {
-      if (!quiet) setPendingAction("idle");
+      if (!quiet) updatePendingAction("idle");
     }
   }
 
@@ -550,7 +637,7 @@ export function EncryptedVault({ authToken, currentUser, onSessionExpired }: Enc
       return;
     }
 
-    setPendingAction("upload");
+    updatePendingAction("upload");
     try {
       if (selectedFiles.length === 0) {
         showMessage("Uploading text content...", "info");
@@ -583,7 +670,7 @@ export function EncryptedVault({ authToken, currentUser, onSessionExpired }: Enc
     } catch (error) {
       showMessage(`Upload failed: ${normalizeSessionError(describeError(error))}`, "danger");
     } finally {
-      setPendingAction("idle");
+      updatePendingAction("idle");
     }
   }
 
@@ -596,7 +683,7 @@ export function EncryptedVault({ authToken, currentUser, onSessionExpired }: Enc
     }
     const normalizedKeyword = searchTerms.join(" ");
 
-    setPendingAction("search");
+    updatePendingAction("search");
     showMessage(`Searching for "${normalizedKeyword}"...`, "info");
     try {
       const encryptedMatches = await jsonRequest<DocumentSummary[]>(
@@ -643,7 +730,7 @@ export function EncryptedVault({ authToken, currentUser, onSessionExpired }: Enc
     } catch (error) {
       showMessage(`Search failed: ${normalizeSessionError(describeError(error))}`, "danger");
     } finally {
-      setPendingAction("idle");
+      updatePendingAction("idle");
     }
   }
 
@@ -667,7 +754,7 @@ export function EncryptedVault({ authToken, currentUser, onSessionExpired }: Enc
 
   async function openDocument(id: string) {
     if (!requireLogin("opening documents")) return;
-    setPendingAction("open");
+    updatePendingAction("open");
     showMessage(`Opening ${id}...`, "info");
     try {
       const detail = await jsonRequest<DocumentDetail>(`${SE_API}/api/se/documents/${encodeURIComponent(id)}`, {
@@ -692,7 +779,7 @@ export function EncryptedVault({ authToken, currentUser, onSessionExpired }: Enc
     } catch (error) {
       showMessage(`Open failed: ${normalizeSessionError(describeError(error))}`, "danger");
     } finally {
-      setPendingAction("idle");
+      updatePendingAction("idle");
     }
   }
 
@@ -713,14 +800,14 @@ export function EncryptedVault({ authToken, currentUser, onSessionExpired }: Enc
 
   async function downloadPreviewFile() {
     if (!selectedDetail || !requireLogin("downloading documents")) return;
-    setPendingAction("download");
+    updatePendingAction("download");
     try {
       await downloadOne(selectedDetail.docId);
       showMessage(`Download started for ${selectedDetail.fileName || selectedDetail.docId}.`, "success");
     } catch (error) {
       showMessage(`Download failed: ${normalizeSessionError(describeError(error))}`, "danger");
     } finally {
-      setPendingAction("idle");
+      updatePendingAction("idle");
     }
   }
 
@@ -759,7 +846,7 @@ export function EncryptedVault({ authToken, currentUser, onSessionExpired }: Enc
       return;
     }
 
-    setPendingAction("download");
+    updatePendingAction("download");
     try {
       for (let index = 0; index < targetDocIds.length; index++) {
         showMessage(`Downloading (${index + 1}/${targetDocIds.length}): ${targetDocIds[index]}`, "info");
@@ -769,7 +856,7 @@ export function EncryptedVault({ authToken, currentUser, onSessionExpired }: Enc
     } catch (error) {
       showMessage(`Download failed: ${normalizeSessionError(describeError(error))}`, "danger");
     } finally {
-      setPendingAction("idle");
+      updatePendingAction("idle");
     }
   }
 
@@ -785,7 +872,7 @@ export function EncryptedVault({ authToken, currentUser, onSessionExpired }: Enc
     );
     if (!confirmed) return;
 
-    setPendingAction("delete");
+    updatePendingAction("delete");
     try {
       let successCount = 0;
       const failures: string[] = [];
@@ -810,7 +897,7 @@ export function EncryptedVault({ authToken, currentUser, onSessionExpired }: Enc
     } catch (error) {
       showMessage(`Delete failed: ${normalizeSessionError(describeError(error))}`, "danger");
     } finally {
-      setPendingAction("idle");
+      updatePendingAction("idle");
     }
   }
 
@@ -826,7 +913,7 @@ export function EncryptedVault({ authToken, currentUser, onSessionExpired }: Enc
     );
     if (!confirmed) return;
 
-    setPendingAction("rebuild");
+    updatePendingAction("rebuild");
     try {
       let successCount = 0;
       const failures: string[] = [];
@@ -853,7 +940,7 @@ export function EncryptedVault({ authToken, currentUser, onSessionExpired }: Enc
     } catch (error) {
       showMessage(`Rebuild failed: ${normalizeSessionError(describeError(error))}`, "danger");
     } finally {
-      setPendingAction("idle");
+      updatePendingAction("idle");
     }
   }
 
@@ -908,20 +995,55 @@ export function EncryptedVault({ authToken, currentUser, onSessionExpired }: Enc
 
   useEffect(() => {
     setToken(authToken);
-    showMessage(`Encrypted vault connected as ${currentUser}.`, "info");
   }, [authToken, currentUser]);
 
   useEffect(() => {
     if (token) {
-      loadDocuments(token, true).then((loaded) => {
-        if (loaded) {
-          showMessage(`Encrypted vault connected as ${currentUser}.`, "success");
-        }
-      });
+      loadDocuments(token, true);
     } else {
       showMessage("Encrypted vault is not connected. Sign in again to continue.", "danger");
     }
   }, [token, currentUser]);
+
+  useEffect(() => {
+    function syncStoredVaultStatus() {
+      const storedPendingAction = loadStoredPendingAction();
+      const storedNotice = loadStoredVaultNotice();
+      setPendingActionState(storedPendingAction);
+
+      if (storedNotice) {
+        setMessage(storedNotice.message);
+        setNoticeTone(storedNotice.tone);
+      } else if (storedPendingAction !== "idle") {
+        setMessage("Vault operation is still running...");
+        setNoticeTone("info");
+      } else {
+        setMessage("");
+        setNoticeTone("info");
+      }
+    }
+
+    window.addEventListener(VAULT_STATUS_EVENT, syncStoredVaultStatus);
+    window.addEventListener("storage", syncStoredVaultStatus);
+    return () => {
+      window.removeEventListener(VAULT_STATUS_EVENT, syncStoredVaultStatus);
+      window.removeEventListener("storage", syncStoredVaultStatus);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!message || noticeTone === "danger" || pendingAction !== "idle") {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      sessionStorage.removeItem(VAULT_NOTICE_STORAGE_KEY);
+      setMessage("");
+      dispatchVaultStatusChange();
+    }, NOTICE_AUTO_DISMISS_MS);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [message, noticeTone, pendingAction]);
 
   useEffect(() => {
     return () => {
@@ -969,16 +1091,6 @@ export function EncryptedVault({ authToken, currentUser, onSessionExpired }: Enc
           <p className="eyebrow">Searchable encryption facade</p>
           <h1>Encrypted Evidence Vault</h1>
         </div>
-        <div className="se-header-status" aria-live="polite">
-          <span className={loggedIn ? "se-status-pill success" : "se-status-pill"}>
-            {loggedIn ? `Connected: ${currentUser}` : "Not connected"}
-          </span>
-          {!loggedIn && (
-            <button className="se-button primary" type="button" onClick={onSessionExpired} disabled={busy}>
-              Sign In
-            </button>
-          )}
-        </div>
       </div>
 
       <div className="se-module">
@@ -999,7 +1111,7 @@ export function EncryptedVault({ authToken, currentUser, onSessionExpired }: Enc
           ))}
         </nav>
 
-        <div className={noticeClass}>{message}</div>
+        <div className={noticeClass} aria-live="polite">{statusMessage}</div>
 
         <div className="se-tab-body">
           {activeTab === "upload" && (

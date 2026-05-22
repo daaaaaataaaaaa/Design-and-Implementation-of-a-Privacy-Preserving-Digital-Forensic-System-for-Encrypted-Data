@@ -273,18 +273,13 @@ export function Detection({ authToken, onNavigate }: DetectionProps) {
           <p className="eyebrow">UNSW-NB15 model facade</p>
           <h1>Intrusion Detection</h1>
         </div>
-        {!mlRunning && (
-          <button className="primary-action" type="button" onClick={startMl} disabled={startingMl}>
-            <Play size={17} /> {startingMl ? "Starting ML" : "Start ML"}
-          </button>
-        )}
       </div>
 
       {!mlRunning && (
         <div className="ml-gate">
           <div>
-            <strong>ML functions are off</strong>
-            <span>Start ML to enable network traffic prediction.</span>
+            <strong>ML service is offline</strong>
+            <span>Start it once to enable network traffic prediction.</span>
           </div>
           <button className="primary-action" type="button" onClick={startMl} disabled={startingMl}>
             <Play size={17} /> {startingMl ? "Starting ML" : "Start ML"}

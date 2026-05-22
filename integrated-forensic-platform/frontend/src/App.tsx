@@ -1,4 +1,4 @@
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { X } from "lucide-react";
 import { AppShell, PageKey } from "./components/AppShell";
 import { BlockchainEvidence } from "./pages/BlockchainEvidence";
@@ -7,11 +7,23 @@ import { Detection } from "./pages/Detection";
 import { EncryptedVault } from "./pages/EncryptedVault";
 import { Explainability } from "./pages/Explainability";
 import { Login } from "./pages/Login";
-import { AuthResponse, changePlatformPassword, clearAuthSession, persistAuthSession } from "./lib/api";
+import { AuthResponse, changePlatformPassword, clearAuthSession, loadAuthSession, persistAuthSession } from "./lib/api";
+
+const ACTIVE_PAGE_KEY = "forensic_active_page";
+const pageKeys: PageKey[] = ["dashboard", "detection", "explainability", "vault", "blockchain"];
+
+function loadActivePage(): PageKey {
+  const savedPage = sessionStorage.getItem(ACTIVE_PAGE_KEY);
+  return pageKeys.includes(savedPage as PageKey) ? (savedPage as PageKey) : "dashboard";
+}
+
+function persistActivePage(page: PageKey) {
+  sessionStorage.setItem(ACTIVE_PAGE_KEY, page);
+}
 
 export default function App() {
-  const [page, setPage] = useState<PageKey>("dashboard");
-  const [authSession, setAuthSession] = useState<AuthResponse | null>(null);
+  const [page, setPage] = useState<PageKey>(loadActivePage);
+  const [authSession, setAuthSession] = useState<AuthResponse | null>(loadAuthSession);
   const [passwordPanelOpen, setPasswordPanelOpen] = useState(false);
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -20,13 +32,23 @@ export default function App() {
   const [passwordError, setPasswordError] = useState("");
   const [passwordSaving, setPasswordSaving] = useState(false);
 
+  useEffect(() => {
+    persistActivePage(page);
+  }, [page]);
+
   function login(session: AuthResponse) {
     persistAuthSession(session);
     setAuthSession(session);
   }
 
+  function changePage(nextPage: PageKey) {
+    persistActivePage(nextPage);
+    setPage(nextPage);
+  }
+
   function logout() {
     clearAuthSession();
+    sessionStorage.removeItem(ACTIVE_PAGE_KEY);
     setPage("dashboard");
     setAuthSession(null);
   }
@@ -85,10 +107,10 @@ export default function App() {
         currentUser={authSession.username}
         onChangePassword={() => setPasswordPanelOpen(true)}
         onLogout={logout}
-        onPageChange={setPage}
+        onPageChange={changePage}
       >
-        {page === "dashboard" && <Dashboard authToken={authSession.token} onNavigate={setPage} />}
-        {page === "detection" && <Detection authToken={authSession.token} onNavigate={setPage} />}
+        {page === "dashboard" && <Dashboard authToken={authSession.token} onNavigate={changePage} />}
+        {page === "detection" && <Detection authToken={authSession.token} onNavigate={changePage} />}
         {page === "explainability" && <Explainability authToken={authSession.token} />}
         {page === "vault" && (
           <EncryptedVault

@@ -185,11 +185,6 @@ export function Explainability({ authToken }: ExplainabilityProps) {
           <h1>Explainable Forensics</h1>
         </div>
         <div className="page-header-actions">
-          {!mlRunning && (
-            <button className="primary-action" type="button" onClick={startMl} disabled={startingMl}>
-              <Play size={17} /> {startingMl ? "Starting ML" : "Start ML"}
-            </button>
-          )}
           <button className="secondary-action" type="button" onClick={() => setReportWindowOpen(true)} disabled={!mlRunning}>
             <FileText size={17} /> Report JSON
           </button>
@@ -202,8 +197,8 @@ export function Explainability({ authToken }: ExplainabilityProps) {
       {!mlRunning && (
         <div className="ml-gate">
           <div>
-            <strong>ML functions are off</strong>
-            <span>Start ML to load explanation images and forensic report JSON.</span>
+            <strong>ML service is offline</strong>
+            <span>Start it once to load explanation images and forensic report JSON.</span>
           </div>
           <button className="primary-action" type="button" onClick={startMl} disabled={startingMl}>
             <Play size={17} /> {startingMl ? "Starting ML" : "Start ML"}
