@@ -253,6 +253,102 @@ Invoke-WebRequest http://localhost:8001/health
 Invoke-WebRequest http://localhost:8082/api/se/health
 ```
 
+## Recommended Stable Local Startup on Windows
+
+Use this flow when Docker Desktop is not available or when you want the most stable local demo startup. The ML service is intentionally started without `--reload`; the reload process can leave a parent process alive while the worker has crashed, which makes the frontend report the ML service as offline.
+
+Run all commands from PowerShell.
+
+### 1. Confirm MySQL is running
+
+```powershell
+Get-Service MySQL80
+```
+
+If it is stopped:
+
+```powershell
+Start-Service MySQL80
+```
+
+Expected database settings:
+
+```text
+host: localhost
+port: 3306
+database: searchable_encryption
+user: root
+password: 123456ysy
+```
+
+### 2. Start the ML service in stable mode
+
+```powershell
+cd integrated-forensic-platform/backend/ml-service
+
+if (!(Test-Path .venv)) {
+  python -m venv .venv
+}
+
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+
+$env:FORENSIC_ML_ASSET_DIR = (Resolve-Path "../../../demo/ML_Dataset/ML_Dataset").Path
+.\.venv\Scripts\python.exe -m uvicorn app.main:app --host 0.0.0.0 --port 8001
+```
+
+If this machine only has Python 3.14 and imports fail with `cp312` or another binary-wheel mismatch, refresh the compiled dependencies once:
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install --upgrade --force-reinstall fastapi pydantic pydantic-core starlette
+.\.venv\Scripts\python.exe -m pip install --upgrade --force-reinstall numpy pandas scipy scikit-learn joblib threadpoolctl
+```
+
+### 3. Start the Searchable Encryption API
+
+```powershell
+cd integrated-forensic-platform/backend/searchable-encryption-api
+
+$env:SE_DB_HOST = "127.0.0.1"
+$env:SE_DB_PORT = "3306"
+$env:SE_DB_NAME = "searchable_encryption"
+$env:SE_DB_USER = "root"
+$env:SE_DB_PASSWORD = "123456ysy"
+
+mvn spring-boot:run
+```
+
+### 4. Start the frontend
+
+```powershell
+cd integrated-forensic-platform/frontend
+npm install
+npm run dev
+```
+
+Open:
+
+```text
+http://localhost:5173
+```
+
+### 5. Health checks
+
+```powershell
+Invoke-WebRequest http://localhost:5173
+Invoke-WebRequest http://localhost:8001/health
+Invoke-WebRequest http://localhost:8001/api/ml/metadata
+Invoke-WebRequest http://localhost:8082/api/se/health
+```
+
+Expected ports:
+
+```text
+Frontend: http://localhost:5173
+ML service: http://localhost:8001
+Searchable Encryption API: http://localhost:8082
+MySQL: localhost:3306
+```
+
 ## Local Development Setup
 
 The commands below use Windows PowerShell because the repository is currently set up on Windows. Equivalent shell commands work on macOS or Linux with path syntax adjusted.
@@ -287,7 +383,7 @@ python -m venv .venv
 pip install -r requirements.txt
 
 $env:FORENSIC_ML_ASSET_DIR = (Resolve-Path "../../../demo/ML_Dataset/ML_Dataset")
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8001
+uvicorn app.main:app --host 0.0.0.0 --port 8001
 ```
 
 Check the service:
