@@ -137,6 +137,10 @@ function buildForensicEvidenceArtifact(
   };
 }
 
+function isAttackPrediction(prediction: PredictionResult | null) {
+  return Number(prediction?.prediction) === 1;
+}
+
 export function Detection({ authToken, onNavigate }: DetectionProps) {
   const [featuresText, setFeaturesText] = useState(JSON.stringify(sampleFeatures, null, 2));
   const [submittedFeatures, setSubmittedFeatures] = useState<Record<string, unknown> | null>(null);
@@ -203,10 +207,13 @@ export function Detection({ authToken, onNavigate }: DetectionProps) {
         method: "POST",
         body: JSON.stringify({ features: parsed })
       });
+      const attackDetected = isAttackPrediction(response);
       setResult(response);
       setSubmittedFeatures(parsed);
-      setEvidenceArtifact(buildForensicEvidenceArtifact(`EVID-${nextEvidenceIndex}`, parsed, response));
-      setNextEvidenceIndex((value) => value + 1);
+      setEvidenceArtifact(attackDetected ? buildForensicEvidenceArtifact(`EVID-${nextEvidenceIndex}`, parsed, response) : null);
+      if (attackDetected) {
+        setNextEvidenceIndex((value) => value + 1);
+      }
       resetPreservationState();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Data analysis failed");
@@ -275,6 +282,11 @@ export function Detection({ authToken, onNavigate }: DetectionProps) {
       setPreservationStatus("Run data analysis first to generate an evidence hash before saving.");
       return;
     }
+    if (!isAttackPrediction(result)) {
+      setPreservationStage("error");
+      setPreservationStatus("Prediction is 0: normal traffic detected. No evidence needs to be saved.");
+      return;
+    }
     if (!contractAddress.trim()) {
       setPreservationStage("error");
       setPreservationStatus("Enter the EvidenceRegistry contract address first. To only view the vault, click Encrypted Evidence Vault above.");
@@ -335,6 +347,7 @@ export function Detection({ authToken, onNavigate }: DetectionProps) {
   }
 
   const preserving = preservationStage === "saving" || preservationStage === "notarizing";
+  const attackDetected = isAttackPrediction(result);
 
   return (
     <section className="page">
@@ -404,7 +417,11 @@ export function Detection({ authToken, onNavigate }: DetectionProps) {
               <div className="kv-grid">
                 <span>Filled Features</span><strong>{result.filled_feature_count}</strong>
                 <span>Missing Features</span><strong>{result.missing_feature_count}</strong>
-                <span>Evidence Hash</span><code>{result.evidence_hash}</code>
+                {attackDetected && (
+                  <>
+                    <span>Evidence Hash</span><code>{result.evidence_hash}</code>
+                  </>
+                )}
               </div>
               {result.probability && (
                 <div className="probability-list">
@@ -417,55 +434,61 @@ export function Detection({ authToken, onNavigate }: DetectionProps) {
                   ))}
                 </div>
               )}
-              {evidenceArtifact && (
-                <div className="evidence-artifact">
-                  <div className="panel-heading compact-heading">
-                    <h2>Forensic Evidence JSON Artifact</h2>
-                    <span className="pill">{evidenceArtifact.Evidence_ID}</span>
+              {attackDetected ? (
+                <>
+                  {evidenceArtifact && (
+                    <div className="evidence-artifact">
+                      <div className="panel-heading compact-heading">
+                        <h2>Forensic Evidence JSON Artifact</h2>
+                        <span className="pill">{evidenceArtifact.Evidence_ID}</span>
+                      </div>
+                      <pre className="json-artifact"><code>{JSON.stringify(evidenceArtifact, null, 2)}</code></pre>
+                    </div>
+                  )}
+                  <div className="preservation-flow">
+                    <div className="pipeline-steps">
+                      <button
+                        className={vaultDocument ? "pipeline-step done" : preservationStage === "saving" ? "pipeline-step active" : "pipeline-step"}
+                        type="button"
+                        onClick={() => onNavigate("vault")}
+                      >
+                        <DatabaseZap size={16} /> Encrypted Evidence Vault
+                      </button>
+                      <button
+                        className={preservationStage === "done" ? "pipeline-step done" : preservationStage === "notarizing" ? "pipeline-step active" : "pipeline-step"}
+                        type="button"
+                        onClick={() => onNavigate("blockchain")}
+                      >
+                        <ShieldCheck size={16} /> On-Chain Evidence
+                      </button>
+                    </div>
+                    <label>EvidenceRegistry Contract Address</label>
+                    <input
+                      value={contractAddress}
+                      onChange={(event) => updateContractAddress(event.target.value)}
+                      placeholder="0x..."
+                    />
+                    <div className="button-row">
+                      <button className="primary-action" type="button" disabled={preserving} onClick={preserveResult}>
+                        <DatabaseZap size={17} /> {preserving ? "Workflow Running" : "Save to Vault and Anchor On-Chain"}
+                      </button>
+                    </div>
+                    {vaultDocument && (
+                      <div className="kv-grid compact">
+                        <span>Vault ID</span><strong>{vaultDocument.docId}</strong>
+                        <span>On-Chain Transaction</span><code>{chainTxHash || "Pending submission"}</code>
+                      </div>
+                    )}
+                    {preservationStatus && (
+                      <div className={preservationStage === "error" ? "notice danger" : "notice success"}>
+                        {preservationStatus}
+                      </div>
+                    )}
                   </div>
-                  <pre className="json-artifact"><code>{JSON.stringify(evidenceArtifact, null, 2)}</code></pre>
-                </div>
+                </>
+              ) : (
+                <div className="notice success">Prediction is 0: normal traffic detected. No evidence needs to be saved.</div>
               )}
-              <div className="preservation-flow">
-                <div className="pipeline-steps">
-                  <button
-                    className={vaultDocument ? "pipeline-step done" : preservationStage === "saving" ? "pipeline-step active" : "pipeline-step"}
-                    type="button"
-                    onClick={() => onNavigate("vault")}
-                  >
-                    <DatabaseZap size={16} /> Encrypted Evidence Vault
-                  </button>
-                  <button
-                    className={preservationStage === "done" ? "pipeline-step done" : preservationStage === "notarizing" ? "pipeline-step active" : "pipeline-step"}
-                    type="button"
-                    onClick={() => onNavigate("blockchain")}
-                  >
-                    <ShieldCheck size={16} /> On-Chain Evidence
-                  </button>
-                </div>
-                <label>EvidenceRegistry Contract Address</label>
-                <input
-                  value={contractAddress}
-                  onChange={(event) => updateContractAddress(event.target.value)}
-                  placeholder="0x..."
-                />
-                <div className="button-row">
-                  <button className="primary-action" type="button" disabled={preserving} onClick={preserveResult}>
-                  <DatabaseZap size={17} /> {preserving ? "Workflow Running" : "Save to Vault and Anchor On-Chain"}
-                  </button>
-                </div>
-                {vaultDocument && (
-                  <div className="kv-grid compact">
-                  <span>Vault ID</span><strong>{vaultDocument.docId}</strong>
-                  <span>On-Chain Transaction</span><code>{chainTxHash || "Pending submission"}</code>
-                  </div>
-                )}
-                {preservationStatus && (
-                  <div className={preservationStage === "error" ? "notice danger" : "notice success"}>
-                    {preservationStatus}
-                  </div>
-                )}
-              </div>
             </div>
           ) : (
           <div className="empty-state">Run analysis once to show the predicted class, probability, structured evidence JSON, and hash for on-chain evidence anchoring.</div>

@@ -107,14 +107,15 @@ public class DocumentOperationService {
         if (originalKeywords == null || originalKeywords.length == 0) {
             throw new IllegalStateException("No keywords available for reindexing.");
         }
+        List<String> enrichedKeywords = enrichKeywordsFromContent(originalKeywords, data, desKey);
 
         List<byte[]> rebuiltCiphertexts = new ArrayList<>();
         // Rebuild uses the same token expansion rules as upload so prefix-search behavior remains consistent.
-        for (String token : buildSearchableTokens(originalKeywords)) {
+        for (String token : buildSearchableTokens(enrichedKeywords)) {
             rebuiltCiphertexts.add(PEKSUtil.encrypt(peksPublicKey, token));
         }
         data.setPeksCiphertexts(rebuiltCiphertexts);
-        data.setEncryptedKeywordMetadata(encryptKeywordMetadata(originalKeywords, desKey));
+        data.setEncryptedKeywordMetadata(encryptKeywordMetadata(enrichedKeywords, null, desKey));
         return data;
     }
 
@@ -129,9 +130,10 @@ public class DocumentOperationService {
         if (originalKeywords == null || originalKeywords.length == 0) {
             throw new IllegalStateException("No keywords available for reindexing.");
         }
+        List<String> enrichedKeywords = enrichKeywordsFromContent(originalKeywords, data, sourceDesKey);
 
         List<byte[]> rebuiltCiphertexts = new ArrayList<>();
-        for (String token : buildSearchableTokens(originalKeywords)) {
+        for (String token : buildSearchableTokens(enrichedKeywords)) {
             rebuiltCiphertexts.add(PEKSUtil.encrypt(targetPeksPublicKey, token));
         }
 
@@ -140,7 +142,7 @@ public class DocumentOperationService {
             data.setEncryptedContent(DESUtil.encrypt(plaintext, targetDesKey));
         }
         data.setPeksCiphertexts(rebuiltCiphertexts);
-        data.setEncryptedKeywordMetadata(encryptKeywordMetadata(originalKeywords, targetDesKey));
+        data.setEncryptedKeywordMetadata(encryptKeywordMetadata(enrichedKeywords, null, targetDesKey));
         return data;
     }
 
@@ -242,6 +244,13 @@ public class DocumentOperationService {
             // JSON evidence files read only explicit keyword fields to avoid noisy tokens from whole-document JSON tokenization.
             String jsonText = new String(uploadContent.originalContent(), StandardCharsets.UTF_8);
             keywords.addAll(KeywordExtractor.extractJsonKeywordFields(jsonText));
+        }
+        if (!jsonUpload && uploadContent.automaticTextKeywordsEnabled() && isTextDocument(uploadContent.mediaType())) {
+            // Text-box uploads may still contain JSON evidence artifacts; preserve explicit keyword values such as protocol:udp.
+            String text = uploadContent.extractedText() == null || uploadContent.extractedText().isBlank()
+                    ? new String(uploadContent.originalContent(), StandardCharsets.UTF_8)
+                    : uploadContent.extractedText();
+            keywords.addAll(KeywordExtractor.extractJsonKeywordFields(text));
         }
         if (!jsonUpload && uploadContent.automaticTextKeywordsEnabled() && uploadContent.extractedText() != null && !uploadContent.extractedText().isBlank()) {
             keywords.addAll(KeywordExtractor.extractWords(uploadContent.extractedText()));
@@ -418,6 +427,20 @@ public class DocumentOperationService {
         // The metadata is encrypted as a whole, so the server cannot read user descriptions or plaintext keywords.
         String joinedMetadata = String.join("\n", metadataLines);
         return DESUtil.encrypt(joinedMetadata.getBytes(StandardCharsets.UTF_8), desKey);
+    }
+
+    /**
+     * Adds explicit JSON keyword fields from encrypted text evidence when rebuilding older text uploads.
+     */
+    private List<String> enrichKeywordsFromContent(String[] originalKeywords, EncryptedData data, SecretKey desKey) throws Exception {
+        Set<String> enrichedKeywords = new LinkedHashSet<>(Arrays.asList(originalKeywords));
+        if (data.getEncryptedContent() == null || !isTextDocument(data.getMediaType())) {
+            return new ArrayList<>(enrichedKeywords);
+        }
+
+        String plaintext = new String(DESUtil.decrypt(data.getEncryptedContent(), desKey), StandardCharsets.UTF_8);
+        enrichedKeywords.addAll(KeywordExtractor.extractJsonKeywordFields(plaintext));
+        return new ArrayList<>(enrichedKeywords);
     }
 
     /**

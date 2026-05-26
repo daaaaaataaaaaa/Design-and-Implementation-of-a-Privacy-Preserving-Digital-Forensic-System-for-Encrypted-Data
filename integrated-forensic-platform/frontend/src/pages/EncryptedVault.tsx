@@ -718,6 +718,28 @@ export function EncryptedVault({ authToken, currentUser, onSessionExpired }: Enc
           matchedKeywords: combinedKeywords
         });
       }
+      for (const document of latestDocuments) {
+        if (merged.has(document.docId)) continue;
+
+        try {
+          const detail = await jsonRequest<DocumentDetail>(`${SE_API}/api/se/documents/${encodeURIComponent(document.docId)}`, {
+            headers: authHeader(token)
+          });
+          const matchedKeywords = searchTerms.filter((term) => countPreviewMatches(detail, term) > 0);
+          if (!matchedKeywords.length) continue;
+
+          merged.set(document.docId, {
+            ...document,
+            matchCount: matchedKeywords.length,
+            matchedKeywords
+          });
+        } catch (error) {
+          const reason = describeError(error);
+          if (/invalid bearer|unauthorized|401/i.test(reason)) {
+            throw new Error(normalizeSessionError(reason));
+          }
+        }
+      }
       const results = Array.from(merged.values()).sort((left, right) => {
         return (right.matchCount ?? 0) - (left.matchCount ?? 0)
           || left.docId.localeCompare(right.docId);
