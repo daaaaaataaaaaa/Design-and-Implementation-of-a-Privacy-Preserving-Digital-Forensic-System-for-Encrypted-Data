@@ -22,9 +22,15 @@ function persistActivePage(page: PageKey) {
   sessionStorage.setItem(ACTIVE_PAGE_KEY, page);
 }
 
+function loadInitialAuthSession(): AuthResponse | null {
+  const navigationEntry = performance.getEntriesByType("navigation")[0] as PerformanceNavigationTiming | undefined;
+  const isReload = navigationEntry?.type === "reload";
+  return isReload ? loadAuthSession() : null;
+}
+
 export default function App() {
   const [page, setPage] = useState<PageKey>(loadActivePage);
-  const [authSession, setAuthSession] = useState<AuthResponse | null>(loadAuthSession);
+  const [authSession, setAuthSession] = useState<AuthResponse | null>(loadInitialAuthSession);
   const [passwordPanelOpen, setPasswordPanelOpen] = useState(false);
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
